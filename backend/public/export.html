@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Export / Backup — Gate Pass</title>
+    <link rel="stylesheet" href="/assets/css/style.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div>
+        <h1>Export / Backup</h1>
+        <div class="sub"><a href="/">← Dashboard</a></div>
+      </div>
+    </header>
+    <main>
+      <section class="card">
+        <h2>Daily export</h2>
+        <p class="help">
+          Generates <code>visitors.csv</code> and <code>visitors.xlsx</code> under <code>/exports/YYYY-MM-DD/</code>, and
+          copies visitor/CNIC images into <code>/backups/YYYY-MM-DD/images/...</code>.
+        </p>
+        <div class="row stack" style="margin-top: 10px">
+          <div style="flex: 1; min-width: 200px">
+            <label for="exportDate">Date</label>
+            <input id="exportDate" type="date" />
+          </div>
+          <div style="align-self: flex-end">
+            <button class="btn" type="button" id="exportBtn">Export CSV / Excel + backup images</button>
+          </div>
+        </div>
+        <div id="msg"></div>
+        <div id="links" class="card" style="margin-top: 14px; display: none">
+          <h2>Download links</h2>
+          <p><a id="csvLink" href="#" target="_blank" rel="noopener">CSV</a></p>
+          <p><a id="xlsxLink" href="#" target="_blank" rel="noopener">Excel</a></p>
+          <p>
+            Backup root:
+            <a id="backupLink" href="#" target="_blank" rel="noopener"></a>
+          </p>
+          <p class="help">
+            Browsers usually cannot list folders. If the link shows “Not found”, open
+            <code>backend/backups/&lt;date&gt;/images/</code> in File Explorer on the server PC.
+          </p>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="/assets/js/export.js"></script>
+  </body>
+</html>

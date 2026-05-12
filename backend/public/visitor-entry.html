@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>New Visitor — Gate Pass</title>
+    <link rel="stylesheet" href="/assets/css/style.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div>
+        <h1>New Visitor Entry</h1>
+        <div class="sub"><a href="/">← Dashboard</a> · <a href="/visitors.html">Visitors</a></div>
+      </div>
+    </header>
+
+    <main class="visitor-entry-main">
+      <div id="msg"></div>
+
+      <section class="card auto-capture-card">
+        <h2>Auto Capture Mode</h2>
+        <p class="help" style="margin-top: 0">
+          Optional non-touch flow: stable face → countdown → photo → CNIC front → OCR. Manual buttons below always work
+          as fallback.
+        </p>
+        <div class="auto-controls row" style="flex-wrap: wrap; gap: 10px; align-items: center">
+          <label class="row" style="gap: 8px; align-items: center">
+            <input type="checkbox" id="autoEnableMode" />
+            <span>Enable Auto Mode</span>
+          </label>
+          <button class="btn" type="button" id="btnAutoStart">Start Auto Flow</button>
+          <button class="btn secondary" type="button" id="btnAutoStop">Stop Auto Flow</button>
+        </div>
+        <div id="autoStatus" class="auto-status help" style="margin-top: 10px"></div>
+        <div id="autoCountdown" class="auto-countdown" aria-live="polite"></div>
+        <div id="autoStep" class="auto-step help" style="margin-top: 6px"></div>
+        <div class="grid cols-2 auto-preview-grid" style="margin-top: 14px">
+          <div>
+            <div class="help">Visitor camera preview</div>
+            <div class="preview-stack">
+              <img id="autoStreamVisitor" alt="Visitor camera" class="auto-preview-img" style="display: none" />
+              <canvas id="autoOverlayVisitor" class="auto-overlay-canvas" width="0" height="0"></canvas>
+            </div>
+          </div>
+          <div>
+            <div class="help">CNIC camera preview</div>
+            <div class="preview-stack">
+              <img id="autoStreamCnic" alt="CNIC camera" class="auto-preview-img" style="display: none" />
+              <canvas id="autoOverlayCnic" class="auto-overlay-canvas" width="0" height="0"></canvas>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="grid cols-2">
+        <section class="card">
+          <h2>Camera</h2>
+
+          <div class="stack">
+            <div>
+              <label for="streamUrl">Camera Stream URL</label>
+              <input id="streamUrl" type="url" placeholder="http://192.168.1.25:8080/video" />
+            </div>
+            <div>
+              <label for="snapshotUrl">Camera Snapshot URL</label>
+              <input id="snapshotUrl" type="url" placeholder="http://192.168.1.25:8080/shot.jpg" />
+            </div>
+            <label class="row" style="gap: 8px; align-items: center">
+              <input id="useIframe" type="checkbox" />
+              <span>Use iframe for stream preview (some apps need this)</span>
+            </label>
+            <div class="row">
+              <button class="btn secondary" type="button" id="btnLoadStream">Load stream</button>
+              <button class="btn secondary" type="button" id="btnTestSnap">Test snapshot</button>
+            </div>
+          </div>
+
+          <div class="stream-box" style="margin-top: 12px">
+            <iframe id="streamIframe" title="Stream" style="display: none"></iframe>
+            <img id="streamImg" alt="Stream preview" style="display: none" />
+            <div id="streamPlaceholder" class="help" style="padding: 12px; color: #ccc">
+              Stream preview will appear here.
+            </div>
+          </div>
+
+          <h2 style="margin-top: 16px">Visitor photo</h2>
+          <div class="row">
+            <button class="btn" type="button" id="btnCapVisitor">Capture visitor photo</button>
+          </div>
+          <div class="preview visitor" style="margin-top: 10px">
+            <img id="prevVisitor" alt="Visitor preview" style="display: none" />
+            <span id="prevVisitorPh" class="help">No image yet</span>
+          </div>
+          <div class="stack" style="margin-top: 10px">
+            <label for="upVisitor">Or upload visitor photo</label>
+            <input id="upVisitor" type="file" accept="image/*" />
+            <button class="btn secondary small" type="button" id="btnUpVisitor">Upload visitor photo</button>
+          </div>
+
+          <h2 style="margin-top: 16px">CNIC</h2>
+          <div class="row">
+            <button class="btn" type="button" id="btnCapFront">Capture CNIC front</button>
+            <button class="btn" type="button" id="btnCapBack">Capture CNIC back</button>
+          </div>
+          <div class="grid cols-2" style="margin-top: 10px">
+            <div>
+              <div class="help">Front</div>
+              <div class="preview cnic">
+                <img id="prevFront" alt="CNIC front" style="display: none" />
+                <span id="prevFrontPh" class="help">No image</span>
+              </div>
+            </div>
+            <div>
+              <div class="help">Back</div>
+              <div class="preview cnic">
+                <img id="prevBack" alt="CNIC back" style="display: none" />
+                <span id="prevBackPh" class="help">No image</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="stack" style="margin-top: 10px">
+            <label for="upFront">Or upload CNIC front</label>
+            <input id="upFront" type="file" accept="image/*" />
+            <button class="btn secondary small" type="button" id="btnUpFront">Upload CNIC front</button>
+            <label for="upBack">Or upload CNIC back</label>
+            <input id="upBack" type="file" accept="image/*" />
+            <button class="btn secondary small" type="button" id="btnUpBack">Upload CNIC back</button>
+          </div>
+
+          <div class="row" style="margin-top: 12px">
+            <button class="btn" type="button" id="btnOcr">Run OCR (front)</button>
+          </div>
+          <div class="msg warn" style="margin-top: 10px" id="ocrWarnMsg">
+            OCR may be inaccurate. Please verify Name and CNIC manually before saving.
+          </div>
+          <details class="ocr-details">
+            <summary>OCR debug</summary>
+            <pre id="ocrDiag" class="help" style="font-size: 11px; white-space: pre-wrap; margin-top: 8px"></pre>
+            <label for="ocrRaw" style="margin-top: 8px">Raw text</label>
+            <textarea id="ocrRaw" readonly rows="6" style="margin-top: 4px"></textarea>
+            <label for="ocrCleaned" style="margin-top: 8px">Cleaned lines</label>
+            <textarea id="ocrCleaned" readonly rows="5" style="margin-top: 4px"></textarea>
+          </details>
+        </section>
+
+        <section class="card">
+          <h2>Visitor details</h2>
+          <form id="visitorForm" class="grid stack" autocomplete="on">
+            <div>
+              <label for="visitor_name">Visitor name *</label>
+              <input id="visitor_name" name="visitor_name" type="text" required />
+            </div>
+            <div>
+              <label for="cnic_no">CNIC *</label>
+              <input id="cnic_no" name="cnic_no" type="text" required placeholder="12345-1234567-1" />
+            </div>
+            <div>
+              <label for="company">Company *</label>
+              <input id="company" name="company" type="text" required />
+            </div>
+
+            <input type="hidden" id="visitor_photo_path" />
+            <input type="hidden" id="cnic_front_path" />
+            <input type="hidden" id="cnic_back_path" />
+            <input type="hidden" id="ocr_raw_text" />
+
+            <div class="row" style="margin-top: 8px">
+              <button class="btn" type="submit" id="btnSave">Save visitor &amp; generate pass</button>
+              <button class="btn secondary" type="button" id="btnReset">Reset form</button>
+            </div>
+          </form>
+        </section>
+      </div>
+    </main>
+
+    <!-- face-api.js is loaded from /assets/vendor/ first when you start Auto Flow (see auto-capture.js). -->
+    <script type="module" src="/assets/js/visitor-entry.js"></script>
+  </body>
+</html>

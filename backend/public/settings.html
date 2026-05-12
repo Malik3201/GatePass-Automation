@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Settings — Gate Pass</title>
+    <link rel="stylesheet" href="/assets/css/style.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div>
+        <h1>Settings</h1>
+        <div class="sub"><a href="/">← Dashboard</a></div>
+      </div>
+    </header>
+    <main>
+      <section class="card">
+        <h2>Application</h2>
+        <div class="grid stack">
+          <div>
+            <label for="COMPANY_NAME">Company Name</label>
+            <input id="COMPANY_NAME" type="text" autocomplete="organization" />
+          </div>
+          <div>
+            <label for="GATE_NAME">Gate Name</label>
+            <input id="GATE_NAME" type="text" />
+          </div>
+          <div>
+            <label for="CAMERA_STREAM_URL">Camera Stream URL (legacy fallback)</label>
+            <input id="CAMERA_STREAM_URL" type="url" placeholder="http://192.168.1.25:8080/video" />
+            <div class="help">
+              For mobile testing: connect phone and laptop to the same Wi‑Fi, start an IP camera app, then paste the
+              browser stream URL here. Some apps use MJPEG in an <code>&lt;img&gt;</code>; others need an
+              <code>&lt;iframe&gt;</code>.
+            </div>
+          </div>
+          <div>
+            <label for="CAMERA_SNAPSHOT_URL">Camera Snapshot URL (legacy fallback)</label>
+            <input id="CAMERA_SNAPSHOT_URL" type="url" placeholder="http://192.168.1.25:8080/shot.jpg" />
+            <div class="help">Used when visitor/CNIC snapshot URLs are empty.</div>
+          </div>
+          <hr style="border: 0; border-top: 1px solid var(--border); margin: 12px 0" />
+          <h3 style="margin: 0 0 8px; font-size: 0.95rem">Separate cameras (optional)</h3>
+          <p class="help" style="margin-top: 0">
+            Leave blank to use the legacy stream/snapshot URLs above for both steps.
+          </p>
+          <div>
+            <label for="VISITOR_CAMERA_STREAM_URL">Visitor Camera Stream URL</label>
+            <input id="VISITOR_CAMERA_STREAM_URL" type="url" placeholder="http://192.168.1.25:8080/video" />
+          </div>
+          <div>
+            <label for="VISITOR_CAMERA_SNAPSHOT_URL">Visitor Camera Snapshot URL</label>
+            <input id="VISITOR_CAMERA_SNAPSHOT_URL" type="url" placeholder="http://192.168.1.25:8080/shot.jpg" />
+          </div>
+          <div>
+            <label for="CNIC_CAMERA_STREAM_URL">CNIC Camera Stream URL</label>
+            <input id="CNIC_CAMERA_STREAM_URL" type="url" placeholder="http://192.168.1.26:8080/video" />
+          </div>
+          <div>
+            <label for="CNIC_CAMERA_SNAPSHOT_URL">CNIC Camera Snapshot URL</label>
+            <input id="CNIC_CAMERA_SNAPSHOT_URL" type="url" placeholder="http://192.168.1.26:8080/shot.jpg" />
+          </div>
+          <hr style="border: 0; border-top: 1px solid var(--border); margin: 12px 0" />
+          <h3 style="margin: 0 0 8px; font-size: 0.95rem">Auto capture (non-touch)</h3>
+          <div>
+            <label for="AUTO_CAPTURE_ENABLED">Auto Capture Enabled (default for new sessions)</label>
+            <select id="AUTO_CAPTURE_ENABLED">
+              <option value="true">true</option>
+              <option value="false">false</option>
+            </select>
+            <div class="help">Operators can still toggle Auto Mode on the visitor entry page.</div>
+          </div>
+          <div>
+            <label for="AUTO_FACE_COUNTDOWN_SECONDS">Face Countdown Seconds</label>
+            <input id="AUTO_FACE_COUNTDOWN_SECONDS" type="number" min="1" max="10" step="1" />
+          </div>
+          <div>
+            <label for="AUTO_CNIC_COUNTDOWN_SECONDS">CNIC Countdown Seconds</label>
+            <input id="AUTO_CNIC_COUNTDOWN_SECONDS" type="number" min="1" max="10" step="1" />
+          </div>
+          <div>
+            <label for="BACKUP_EXPORT_PATH">Backup Export Path (label)</label>
+            <input id="BACKUP_EXPORT_PATH" type="text" placeholder="exports" />
+            <div class="help">Used as a setting label for future automation; exports still go to <code>/exports</code>.</div>
+          </div>
+          <div>
+            <label for="OCR_ENABLED">OCR Enabled</label>
+            <select id="OCR_ENABLED">
+              <option value="true">true</option>
+              <option value="false">false</option>
+            </select>
+            <div class="help">If disabled, you can still run OCR from the entry page later (UI hint only for now).</div>
+          </div>
+        </div>
+        <div class="row" style="margin-top: 14px">
+          <button class="btn" type="button" id="saveBtn">Save Settings</button>
+          <button class="btn secondary" type="button" id="reloadBtn">Reload</button>
+        </div>
+        <div id="msg"></div>
+      </section>
+    </main>
+    <script type="module" src="/assets/js/settings.js"></script>
+  </body>
+</html>

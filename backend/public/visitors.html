@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Visitors — Gate Pass</title>
+    <link rel="stylesheet" href="/assets/css/style.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div>
+        <h1>Visitors</h1>
+        <div class="sub"><a href="/">← Dashboard</a> · <a href="/visitor-entry.html">New entry</a></div>
+      </div>
+    </header>
+    <main>
+      <section class="card">
+        <h2>Search</h2>
+        <div class="grid cols-2">
+          <div>
+            <label for="fDate">Date (time in / created)</label>
+            <input id="fDate" type="date" />
+          </div>
+          <div>
+            <label for="fCnic">CNIC (partial)</label>
+            <input id="fCnic" type="text" placeholder="12345" />
+          </div>
+          <div>
+            <label for="fName">Visitor name</label>
+            <input id="fName" type="text" />
+          </div>
+          <div>
+            <label for="fMeet">Person to meet</label>
+            <input id="fMeet" type="text" />
+          </div>
+        </div>
+        <div class="row" style="margin-top: 12px">
+          <button class="btn" type="button" id="searchBtn">Search</button>
+          <button class="btn secondary" type="button" id="clearBtn">Clear</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Results</h2>
+        <div id="msg"></div>
+        <div style="overflow-x: auto">
+          <table class="data" id="tbl">
+            <thead>
+              <tr>
+                <th>Pass</th>
+                <th>Name</th>
+                <th>CNIC</th>
+                <th>Company</th>
+                <th>Meet</th>
+                <th>Time in</th>
+                <th>Time out</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="tbody"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="/assets/js/visitors.js"></script>
+  </body>
+</html>
