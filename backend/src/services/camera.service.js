@@ -41,12 +41,19 @@ async function downloadSnapshotBuffer(snapshotUrl, timeoutMs = CAPTURE_TIMEOUT_M
       timeout: timeoutMs,
       maxContentLength: 15 * 1024 * 1024,
       validateStatus: () => true,
+      headers: {
+        'User-Agent': 'Mozilla/5.0',
+        Accept: 'image/jpeg,image/*,*/*',
+        'Cache-Control': 'no-cache',
+      },
     });
 
     if (res.status < 200 || res.status >= 300) {
       const err = new Error(`Camera returned HTTP ${res.status}`);
       err.status = 502;
       err.hint = 'Open the snapshot URL in a browser on this PC to confirm it works.';
+      err.code = `HTTP_${res.status}`;
+      err.url = url;
       throw err;
     }
 
@@ -57,6 +64,8 @@ async function downloadSnapshotBuffer(snapshotUrl, timeoutMs = CAPTURE_TIMEOUT_M
     const err = new Error(msg);
     err.status = 502;
     err.hint = 'Check LAN/Wi-Fi, firewall, and that the phone/camera app is running.';
+    err.code = e.code || null;
+    err.url = url;
     throw err;
   }
 }

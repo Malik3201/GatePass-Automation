@@ -7,42 +7,57 @@
     <link rel="stylesheet" href="/assets/css/style.css" />
     <link rel="stylesheet" href="/assets/css/pass.css" />
   </head>
-  <body>
-    <header class="site-header no-print">
-      <div>
-        <h1>Visitor Pass</h1>
-        <div class="sub">
-          <a href="/visitors.html">← Visitors</a> · <a href="/">Dashboard</a> ·
-          <a href="/visitor-entry.html">New visitor</a>
-        </div>
+  <body class="has-sidebar">
+    <aside class="app-sidebar no-print" aria-label="Main navigation">
+      <div class="app-sidebar-brand">
+        <p class="brand-title">GatePass Automation</p>
+        <p class="brand-sub">Visitor Management</p>
       </div>
-    </header>
+      <nav class="app-nav">
+        <a href="/"><span class="nav-ico" aria-hidden="true">▣</span> Dashboard</a>
+        <a href="/visitor-entry.html"><span class="nav-ico" aria-hidden="true">▸</span> New Visitor Entry</a>
+        <a href="/visitors.html"><span class="nav-ico" aria-hidden="true">☰</span> Visitor Log</a>
+        <a href="/settings.html"><span class="nav-ico" aria-hidden="true">⚙</span> Settings</a>
+        <a href="/export.html"><span class="nav-ico" aria-hidden="true">⬇</span> Export / Backup</a>
+      </nav>
+    </aside>
 
-    <main class="pass-page">
-      <div class="pass-actions no-print">
-        <button class="btn" type="button" id="printBtn">Print</button>
-        <a class="btn secondary" href="/visitor-entry.html">New visitor</a>
-      </div>
+    <div class="app-wrap">
+      <header class="app-topbar no-print">
+        <h1 class="app-topbar-title">Visitor pass</h1>
+        <div class="app-topbar-meta">
+          <span class="pill-muted">Print preview</span>
+        </div>
+      </header>
 
-      <div id="msg" class="msg" style="display: none"></div>
-
-      <section class="pass-card" id="passCard">
-        <div class="pass-logo-wrap">
-          <img class="pass-logo" src="/assets/logo.jpeg" alt="Logo" width="200" height="80" decoding="async" />
+      <main class="app-main pass-shell">
+        <div class="pass-toolbar no-print">
+          <a class="btn btn-outline" href="/visitors.html">← Visitor Log</a>
+          <button class="btn btn-primary" type="button" id="printBtn">Print</button>
+          <a class="btn btn-secondary" href="/visitor-entry.html">New visitor</a>
         </div>
 
-        <div class="pass-photo" id="photoBox">
-          <div class="placeholder" id="photoPlaceholder">No photo</div>
-          <img id="photoImg" alt="Visitor" style="display: none" />
-        </div>
+        <div id="msg" class="msg no-print" style="display: none"></div>
 
-        <div class="pass-lines">
-          <div class="pass-line"><div class="k">NAME</div><div class="v" id="v_name"></div></div>
-          <div class="pass-line"><div class="k">CNIC</div><div class="v" id="v_cnic"></div></div>
-          <div class="pass-line"><div class="k">COMPANY</div><div class="v" id="v_company"></div></div>
-        </div>
-      </section>
-    </main>
+        <section class="pass-card" id="passCard">
+          <div class="pass-org-header" id="passSiteCompany"></div>
+          <div class="pass-logo-wrap">
+            <img class="pass-logo" src="/assets/logo.jpeg" alt="Logo" width="200" height="80" decoding="async" />
+          </div>
+
+          <div class="pass-photo" id="photoBox">
+            <div class="placeholder" id="photoPlaceholder">No photo</div>
+            <img id="photoImg" alt="Visitor" style="display: none" />
+          </div>
+
+          <div class="pass-lines">
+            <div class="pass-line"><div class="k">NAME</div><div class="v" id="v_name"></div></div>
+            <div class="pass-line"><div class="k">CNIC</div><div class="v" id="v_cnic"></div></div>
+            <div class="pass-line"><div class="k">COMPANY</div><div class="v" id="v_company"></div></div>
+          </div>
+        </section>
+      </main>
+    </div>
 
     <script type="module" src="/assets/js/pass.js"></script>
   </body>

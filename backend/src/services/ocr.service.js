@@ -1,8 +1,10 @@
 const fs = require('fs');
 const Tesseract = require('tesseract.js');
 const path = require('path');
-const { createOcrVariantPaths, safeUnlink } = require('./image.service');
+const { createOcrVariantPaths, preprocessForOcrFast, safeUnlink } = require('./image.service');
 const { resolvePublicUploadPath } = require('../utils/fileHelpers');
+const { getSetting } = require('./settings.service');
+const { tryOcrWithPython } = require('./ocr.python.client');
 
 /**
  * Pakistani CNIC front OCR — names depend on scan quality and NADRA layout.
@@ -437,6 +439,8 @@ async function recognizeToText(imagePath) {
   const {
     data: { text },
   } = await Tesseract.recognize(imagePath, 'eng', {
+    tessedit_pageseg_mode: 6,
+    preserve_interword_spaces: 1,
     logger: () => {},
   });
   return text || '';
@@ -451,31 +455,113 @@ function scoreOcrCandidate(rawText) {
   return score;
 }
 
+let ocrConfigCache = null;
+
+async function getOcrConfig() {
+  if (ocrConfigCache) return ocrConfigCache;
+  const fastRaw = await getSetting('OCR_FAST_MODE');
+  const secondRaw = await getSetting('OCR_SECOND_PASS_ENABLED');
+  const fast = String(fastRaw || 'true').toLowerCase() !== 'false';
+  const second = String(secondRaw || 'false').toLowerCase() === 'true';
+  ocrConfigCache = { fastMode: fast, secondPassEnabled: second };
+  return ocrConfigCache;
+}
+
 async function runOcrOnFile(imageAbsPath) {
-  const variantPaths = await createOcrVariantPaths(imageAbsPath);
-  const texts = [];
-  try {
-    for (const p of variantPaths) {
-      const t = await recognizeToText(p);
-      texts.push(t);
+  const cfg = await getOcrConfig();
+  const t0 = Date.now();
+  let rawText = '';
+  let timing = { preprocess: 0, recognize: 0, parse: 0 };
+
+  if (cfg.fastMode) {
+    // Python OCR offload (optional). If it succeeds, we skip Tesseract completely.
+    if (cfg.fastMode) {
+      const tPy0 = Date.now();
+      const pythonText = await tryOcrWithPython(imageAbsPath, cfg);
+      timing.recognize = Date.now() - tPy0;
+
+      if (pythonText && pythonText.trim().length) {
+        const hasCnicPython = !!extractCnicWithConfidence(pythonText).cnic;
+        if (hasCnicPython || !cfg.secondPassEnabled) {
+          rawText = pythonText;
+        }
+      }
     }
-  } finally {
-    variantPaths.forEach(safeUnlink);
+
+    // If Python produced usable OCR (or second pass isn't needed), skip Tesseract.
+    if (rawText && rawText.trim().length) {
+      // continue to parse stage below
+    } else {
+      const tPre0 = Date.now();
+      const fastPath = await preprocessForOcrFast(imageAbsPath);
+      timing.preprocess = Date.now() - tPre0;
+      try {
+        const tRec0 = Date.now();
+        const firstText = await recognizeToText(fastPath);
+        timing.recognize = Date.now() - tRec0;
+        rawText = firstText || '';
+
+        const hasCnicFirst = !!extractCnicWithConfidence(rawText).cnic;
+        if (!hasCnicFirst && cfg.secondPassEnabled) {
+          const tPre2 = Date.now();
+          const thrPath = await createOcrVariantPaths(imageAbsPath).then((paths) => paths[2]);
+          timing.preprocess += Date.now() - tPre2;
+          try {
+            const tRec2 = Date.now();
+            const secondText = await recognizeToText(thrPath);
+            timing.recognize += Date.now() - tRec2;
+            const firstScore = scoreOcrCandidate(rawText);
+            const secondScore = scoreOcrCandidate(secondText);
+            if (secondScore > firstScore) rawText = secondText;
+          } finally {
+            // createOcrVariantPaths already wrote three files; cleanup is best-effort.
+          }
+        }
+      } finally {
+        safeUnlink(fastPath);
+      }
+    }
+  } else {
+    const tPre0 = Date.now();
+    const variantPaths = await createOcrVariantPaths(imageAbsPath);
+    timing.preprocess = Date.now() - tPre0;
+    const texts = [];
+    try {
+      const tRec0 = Date.now();
+      for (const p of variantPaths) {
+        const t = await recognizeToText(p);
+        texts.push(t);
+      }
+      timing.recognize = Date.now() - tRec0;
+    } finally {
+      variantPaths.forEach(safeUnlink);
+    }
+
+    let bestText = texts[0] || '';
+    let bestScore = -1;
+    for (const t of texts) {
+      const sc = scoreOcrCandidate(t);
+      if (sc > bestScore) {
+        bestScore = sc;
+        bestText = t;
+      }
+    }
+    rawText = bestText;
   }
 
-  let bestText = texts[0] || '';
-  let bestScore = -1;
-  for (const t of texts) {
-    const sc = scoreOcrCandidate(t);
-    if (sc > bestScore) {
-      bestScore = sc;
-      bestText = t;
-    }
-  }
-
-  const rawText = bestText;
+  const tParse0 = Date.now();
   const cleanedLines = getCleanedLines(cleanOcrText(rawText));
   const extracted = extractPakistaniCnicFields(rawText, cleanedLines);
+  timing.parse = Date.now() - tParse0;
+
+  try {
+    // Keep log concise for production diagnostics
+    console.log(
+      `OCR timing: preprocess=${timing.preprocess}ms, recognize=${timing.recognize}ms, parse=${timing.parse}ms`
+    );
+  } catch {
+    /* ignore logging errors */
+  }
 
   return {
     success: true,

@@ -6,99 +6,210 @@
     <title>Settings — Gate Pass</title>
     <link rel="stylesheet" href="/assets/css/style.css" />
   </head>
-  <body>
-    <header class="site-header">
-      <div>
-        <h1>Settings</h1>
-        <div class="sub"><a href="/">← Dashboard</a></div>
+  <body class="has-sidebar">
+    <aside class="app-sidebar no-print" aria-label="Main navigation">
+      <div class="app-sidebar-brand">
+        <p class="brand-title">GatePass Automation</p>
+        <p class="brand-sub">Visitor Management</p>
       </div>
-    </header>
-    <main>
-      <section class="card">
-        <h2>Application</h2>
-        <div class="grid stack">
-          <div>
-            <label for="COMPANY_NAME">Company Name</label>
-            <input id="COMPANY_NAME" type="text" autocomplete="organization" />
-          </div>
-          <div>
-            <label for="GATE_NAME">Gate Name</label>
-            <input id="GATE_NAME" type="text" />
-          </div>
-          <div>
-            <label for="CAMERA_STREAM_URL">Camera Stream URL (legacy fallback)</label>
-            <input id="CAMERA_STREAM_URL" type="url" placeholder="http://192.168.1.25:8080/video" />
-            <div class="help">
-              For mobile testing: connect phone and laptop to the same Wi‑Fi, start an IP camera app, then paste the
-              browser stream URL here. Some apps use MJPEG in an <code>&lt;img&gt;</code>; others need an
-              <code>&lt;iframe&gt;</code>.
+      <nav class="app-nav">
+        <a href="/"><span class="nav-ico" aria-hidden="true">▣</span> Dashboard</a>
+        <a href="/visitor-entry.html"><span class="nav-ico" aria-hidden="true">▸</span> New Visitor Entry</a>
+        <a href="/visitors.html"><span class="nav-ico" aria-hidden="true">☰</span> Visitor Log</a>
+        <a class="active" href="/settings.html"><span class="nav-ico" aria-hidden="true">⚙</span> Settings</a>
+        <a href="/export.html"><span class="nav-ico" aria-hidden="true">⬇</span> Export / Backup</a>
+      </nav>
+    </aside>
+
+    <div class="app-wrap">
+      <header class="app-topbar no-print">
+        <h1 class="app-topbar-title">Settings</h1>
+        <div class="app-topbar-meta">
+          <span class="pill"><span aria-hidden="true">●</span> Local system</span>
+          <span class="pill-muted" id="topbarClock">—</span>
+        </div>
+      </header>
+
+      <main class="app-main settings-main">
+        <p class="help settings-intro">
+          <strong>IP mode</strong> uses stream and snapshot URLs from LAN cameras. <strong>USB mode</strong> uses a
+          camera connected to the operator PC through the browser. USB mode works best on
+          <code>http://localhost:5000</code>. If you open the app from another PC using a LAN IP, the browser may
+          require HTTPS before it allows USB camera access. For <strong>mobile-as-IP-camera</strong> testing, use IP
+          mode with your phone’s IP Webcam URLs. Visitor and CNIC cameras can each be IP or USB independently.
+        </p>
+
+        <section class="card">
+          <h2>Company / gate</h2>
+          <div class="grid settings-two-col">
+            <div>
+              <label for="COMPANY_NAME">Company name</label>
+              <input id="COMPANY_NAME" type="text" autocomplete="organization" />
+            </div>
+            <div>
+              <label for="GATE_NAME">Gate name</label>
+              <input id="GATE_NAME" type="text" />
             </div>
           </div>
-          <div>
-            <label for="CAMERA_SNAPSHOT_URL">Camera Snapshot URL (legacy fallback)</label>
-            <input id="CAMERA_SNAPSHOT_URL" type="url" placeholder="http://192.168.1.25:8080/shot.jpg" />
-            <div class="help">Used when visitor/CNIC snapshot URLs are empty.</div>
+        </section>
+
+        <section class="card">
+          <h2>Visitor camera settings</h2>
+          <div class="grid settings-two-col">
+            <div>
+              <label for="VISITOR_CAMERA_TYPE">Camera type</label>
+              <select id="VISITOR_CAMERA_TYPE">
+                <option value="ip">IP camera</option>
+                <option value="usb">USB camera</option>
+              </select>
+            </div>
           </div>
-          <hr style="border: 0; border-top: 1px solid var(--border); margin: 12px 0" />
-          <h3 style="margin: 0 0 8px; font-size: 0.95rem">Separate cameras (optional)</h3>
+          <div id="visitorIpBlock" class="settings-camera-block">
+            <div class="grid settings-two-col">
+              <div>
+                <label for="VISITOR_CAMERA_STREAM_URL">Visitor camera stream URL</label>
+                <input id="VISITOR_CAMERA_STREAM_URL" type="url" placeholder="http://192.168.1.25:8080/video" />
+              </div>
+              <div>
+                <label for="VISITOR_CAMERA_SNAPSHOT_URL">Visitor camera snapshot URL</label>
+                <input id="VISITOR_CAMERA_SNAPSHOT_URL" type="url" placeholder="http://192.168.1.25:8080/shot.jpg" />
+              </div>
+            </div>
+          </div>
+          <div id="visitorUsbBlock" class="settings-camera-block" style="display: none">
+            <div class="grid settings-two-col">
+              <div>
+                <label for="VISITOR_USB_DEVICE_ID">Visitor USB camera</label>
+                <select id="VISITOR_USB_DEVICE_ID">
+                  <option value="">— Select camera —</option>
+                </select>
+                <div class="row" style="margin-top: 10px">
+                  <button class="btn btn-outline btn-sm" type="button" id="btnRefreshVisitorUsb">
+                    Refresh USB cameras
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>CNIC camera settings</h2>
+          <div class="grid settings-two-col">
+            <div>
+              <label for="CNIC_CAMERA_TYPE">Camera type</label>
+              <select id="CNIC_CAMERA_TYPE">
+                <option value="ip">IP camera</option>
+                <option value="usb">USB camera</option>
+              </select>
+            </div>
+          </div>
+          <div id="cnicIpBlock" class="settings-camera-block">
+            <div class="grid settings-two-col">
+              <div>
+                <label for="CNIC_CAMERA_STREAM_URL">CNIC camera stream URL</label>
+                <input id="CNIC_CAMERA_STREAM_URL" type="url" placeholder="http://192.168.1.26:8080/video" />
+              </div>
+              <div>
+                <label for="CNIC_CAMERA_SNAPSHOT_URL">CNIC camera snapshot URL</label>
+                <input id="CNIC_CAMERA_SNAPSHOT_URL" type="url" placeholder="http://192.168.1.26:8080/shot.jpg" />
+              </div>
+            </div>
+          </div>
+          <div id="cnicUsbBlock" class="settings-camera-block" style="display: none">
+            <div class="grid settings-two-col">
+              <div>
+                <label for="CNIC_USB_DEVICE_ID">CNIC USB camera</label>
+                <select id="CNIC_USB_DEVICE_ID">
+                  <option value="">— Select camera —</option>
+                </select>
+                <div class="row" style="margin-top: 10px">
+                  <button class="btn btn-outline btn-sm" type="button" id="btnRefreshCnicUsb">Refresh USB cameras</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>Legacy camera URLs (testing / fallback)</h2>
           <p class="help" style="margin-top: 0">
-            Leave blank to use the legacy stream/snapshot URLs above for both steps.
+            Used when a dedicated visitor or CNIC snapshot URL is empty. Keep these for quick mobile IP Webcam tests.
           </p>
-          <div>
-            <label for="VISITOR_CAMERA_STREAM_URL">Visitor Camera Stream URL</label>
-            <input id="VISITOR_CAMERA_STREAM_URL" type="url" placeholder="http://192.168.1.25:8080/video" />
+          <div class="grid settings-two-col">
+            <div>
+              <label for="CAMERA_STREAM_URL">Legacy camera stream URL</label>
+              <input id="CAMERA_STREAM_URL" type="url" placeholder="http://192.168.1.25:8080/video" />
+              <div class="help">
+                For mobile testing: same Wi‑Fi as this PC, IP camera app, paste the stream URL. Some apps use MJPEG in
+                an <code>&lt;img&gt;</code>; others need an <code>&lt;iframe&gt;</code>.
+              </div>
+            </div>
+            <div>
+              <label for="CAMERA_SNAPSHOT_URL">Legacy camera snapshot URL</label>
+              <input id="CAMERA_SNAPSHOT_URL" type="url" placeholder="http://192.168.1.25:8080/shot.jpg" />
+              <div class="help">Used when visitor or CNIC snapshot URLs are empty.</div>
+            </div>
           </div>
-          <div>
-            <label for="VISITOR_CAMERA_SNAPSHOT_URL">Visitor Camera Snapshot URL</label>
-            <input id="VISITOR_CAMERA_SNAPSHOT_URL" type="url" placeholder="http://192.168.1.25:8080/shot.jpg" />
+        </section>
+
+        <section class="card">
+          <h2>Auto capture settings</h2>
+          <div class="grid settings-two-col">
+            <div>
+              <label for="AUTO_CAPTURE_ENABLED">Auto capture enabled (default for new sessions)</label>
+              <select id="AUTO_CAPTURE_ENABLED">
+                <option value="true">true</option>
+                <option value="false">false</option>
+              </select>
+              <div class="help">Operators can still toggle auto mode on the visitor entry page.</div>
+            </div>
+            <div>
+              <label for="AUTO_FACE_COUNTDOWN_SECONDS">Face countdown (seconds)</label>
+              <input id="AUTO_FACE_COUNTDOWN_SECONDS" type="number" min="1" max="10" step="1" />
+            </div>
+            <div>
+              <label for="AUTO_CNIC_COUNTDOWN_SECONDS">CNIC countdown (seconds)</label>
+              <input id="AUTO_CNIC_COUNTDOWN_SECONDS" type="number" min="1" max="10" step="1" />
+            </div>
           </div>
-          <div>
-            <label for="CNIC_CAMERA_STREAM_URL">CNIC Camera Stream URL</label>
-            <input id="CNIC_CAMERA_STREAM_URL" type="url" placeholder="http://192.168.1.26:8080/video" />
+        </section>
+
+        <section class="card">
+          <h2>OCR settings</h2>
+          <div class="grid settings-two-col">
+            <div>
+              <label for="OCR_ENABLED">OCR enabled</label>
+              <select id="OCR_ENABLED">
+                <option value="true">true</option>
+                <option value="false">false</option>
+              </select>
+              <div class="help">If disabled, you can still run OCR from the entry page (UI hint).</div>
+            </div>
           </div>
-          <div>
-            <label for="CNIC_CAMERA_SNAPSHOT_URL">CNIC Camera Snapshot URL</label>
-            <input id="CNIC_CAMERA_SNAPSHOT_URL" type="url" placeholder="http://192.168.1.26:8080/shot.jpg" />
+        </section>
+
+        <section class="card">
+          <h2>Backup / export</h2>
+          <div class="grid settings-two-col">
+            <div>
+              <label for="BACKUP_EXPORT_PATH">Backup export path (label)</label>
+              <input id="BACKUP_EXPORT_PATH" type="text" placeholder="exports" />
+              <div class="help">Used as a setting label for future automation; exports still go to <code>/exports</code>.</div>
+            </div>
           </div>
-          <hr style="border: 0; border-top: 1px solid var(--border); margin: 12px 0" />
-          <h3 style="margin: 0 0 8px; font-size: 0.95rem">Auto capture (non-touch)</h3>
-          <div>
-            <label for="AUTO_CAPTURE_ENABLED">Auto Capture Enabled (default for new sessions)</label>
-            <select id="AUTO_CAPTURE_ENABLED">
-              <option value="true">true</option>
-              <option value="false">false</option>
-            </select>
-            <div class="help">Operators can still toggle Auto Mode on the visitor entry page.</div>
+        </section>
+
+        <section class="card settings-actions-card">
+          <div class="row" style="gap: 10px; flex-wrap: wrap">
+            <button class="btn btn-primary" type="button" id="saveBtn">Save settings</button>
+            <button class="btn btn-outline" type="button" id="reloadBtn">Reload</button>
           </div>
-          <div>
-            <label for="AUTO_FACE_COUNTDOWN_SECONDS">Face Countdown Seconds</label>
-            <input id="AUTO_FACE_COUNTDOWN_SECONDS" type="number" min="1" max="10" step="1" />
-          </div>
-          <div>
-            <label for="AUTO_CNIC_COUNTDOWN_SECONDS">CNIC Countdown Seconds</label>
-            <input id="AUTO_CNIC_COUNTDOWN_SECONDS" type="number" min="1" max="10" step="1" />
-          </div>
-          <div>
-            <label for="BACKUP_EXPORT_PATH">Backup Export Path (label)</label>
-            <input id="BACKUP_EXPORT_PATH" type="text" placeholder="exports" />
-            <div class="help">Used as a setting label for future automation; exports still go to <code>/exports</code>.</div>
-          </div>
-          <div>
-            <label for="OCR_ENABLED">OCR Enabled</label>
-            <select id="OCR_ENABLED">
-              <option value="true">true</option>
-              <option value="false">false</option>
-            </select>
-            <div class="help">If disabled, you can still run OCR from the entry page later (UI hint only for now).</div>
-          </div>
-        </div>
-        <div class="row" style="margin-top: 14px">
-          <button class="btn" type="button" id="saveBtn">Save Settings</button>
-          <button class="btn secondary" type="button" id="reloadBtn">Reload</button>
-        </div>
-        <div id="msg"></div>
-      </section>
-    </main>
+          <div id="msg" style="margin-top: 12px"></div>
+        </section>
+      </main>
+    </div>
+
     <script type="module" src="/assets/js/settings.js"></script>
   </body>
 </html>

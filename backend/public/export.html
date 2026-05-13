@@ -6,45 +6,68 @@
     <title>Export / Backup — Gate Pass</title>
     <link rel="stylesheet" href="/assets/css/style.css" />
   </head>
-  <body>
-    <header class="site-header">
-      <div>
-        <h1>Export / Backup</h1>
-        <div class="sub"><a href="/">← Dashboard</a></div>
+  <body class="has-sidebar">
+    <aside class="app-sidebar no-print" aria-label="Main navigation">
+      <div class="app-sidebar-brand">
+        <p class="brand-title">GatePass Automation</p>
+        <p class="brand-sub">Visitor Management</p>
       </div>
-    </header>
-    <main>
-      <section class="card">
-        <h2>Daily export</h2>
-        <p class="help">
-          Generates <code>visitors.csv</code> and <code>visitors.xlsx</code> under <code>/exports/YYYY-MM-DD/</code>, and
-          copies visitor/CNIC images into <code>/backups/YYYY-MM-DD/images/...</code>.
-        </p>
-        <div class="row stack" style="margin-top: 10px">
-          <div style="flex: 1; min-width: 200px">
-            <label for="exportDate">Date</label>
-            <input id="exportDate" type="date" />
-          </div>
-          <div style="align-self: flex-end">
-            <button class="btn" type="button" id="exportBtn">Export CSV / Excel + backup images</button>
-          </div>
+      <nav class="app-nav">
+        <a href="/"><span class="nav-ico" aria-hidden="true">▣</span> Dashboard</a>
+        <a href="/visitor-entry.html"><span class="nav-ico" aria-hidden="true">▸</span> New Visitor Entry</a>
+        <a href="/visitors.html"><span class="nav-ico" aria-hidden="true">☰</span> Visitor Log</a>
+        <a href="/settings.html"><span class="nav-ico" aria-hidden="true">⚙</span> Settings</a>
+        <a class="active" href="/export.html"><span class="nav-ico" aria-hidden="true">⬇</span> Export / Backup</a>
+      </nav>
+    </aside>
+
+    <div class="app-wrap">
+      <header class="app-topbar no-print">
+        <h1 class="app-topbar-title">Export / Backup</h1>
+        <div class="app-topbar-meta">
+          <span class="pill"><span aria-hidden="true">●</span> Local system</span>
+          <span class="pill-muted" id="topbarClock">—</span>
         </div>
-        <div id="msg"></div>
-        <div id="links" class="card" style="margin-top: 14px; display: none">
-          <h2>Download links</h2>
-          <p><a id="csvLink" href="#" target="_blank" rel="noopener">CSV</a></p>
-          <p><a id="xlsxLink" href="#" target="_blank" rel="noopener">Excel</a></p>
-          <p>
-            Backup root:
+      </header>
+
+      <main class="app-main">
+        <section class="card">
+          <h2>Daily export</h2>
+          <p class="help">
+            Generates <code>visitors.csv</code> and <code>visitors.xlsx</code> under <code>/exports/YYYY-MM-DD/</code>, and
+            copies visitor/CNIC images into <code>/backups/YYYY-MM-DD/images/...</code>.
+          </p>
+          <div class="row stack export-row">
+            <div class="export-date-field">
+              <label for="exportDate">Date</label>
+              <input id="exportDate" type="date" />
+            </div>
+            <div class="export-btn-wrap">
+              <button class="btn btn-primary" type="button" id="exportBtn">Export CSV / Excel + backup images</button>
+            </div>
+          </div>
+          <div id="msg"></div>
+        </section>
+
+        <section class="card" id="links" style="display: none">
+          <h2>Results</h2>
+          <p class="help" style="margin-top: 0">Row count from this export (if reported by server): <strong id="exportCount">—</strong></p>
+          <ul class="export-links-list">
+            <li><a id="csvLink" class="btn btn-outline btn-sm" href="#" target="_blank" rel="noopener">Download CSV</a></li>
+            <li><a id="xlsxLink" class="btn btn-outline btn-sm" href="#" target="_blank" rel="noopener">Download Excel</a></li>
+          </ul>
+          <p style="margin-top: 12px">
+            <span class="muted-label">Backup folder (try visitors subfolder):</span><br />
             <a id="backupLink" href="#" target="_blank" rel="noopener"></a>
           </p>
           <p class="help">
             Browsers usually cannot list folders. If the link shows “Not found”, open
             <code>backend/backups/&lt;date&gt;/images/</code> in File Explorer on the server PC.
           </p>
-        </div>
-      </section>
-    </main>
+        </section>
+      </main>
+    </div>
+
     <script type="module" src="/assets/js/export.js"></script>
   </body>
 </html>

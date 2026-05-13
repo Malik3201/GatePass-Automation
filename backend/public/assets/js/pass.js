@@ -25,6 +25,20 @@ async function init() {
   }
 
   try {
+    const sRes = await apiGet('/api/settings');
+    const smap = sRes.data || {};
+    const site = String(smap.COMPANY_NAME || '').trim();
+    const siteEl = document.getElementById('passSiteCompany');
+    if (siteEl) {
+      siteEl.textContent = site;
+      siteEl.style.display = site ? 'block' : 'none';
+    }
+  } catch {
+    const siteEl = document.getElementById('passSiteCompany');
+    if (siteEl) siteEl.style.display = 'none';
+  }
+
+  try {
     const vRes = await apiGet(`/api/visitors/${encodeURIComponent(id)}`);
     const v = vRes.data;
 

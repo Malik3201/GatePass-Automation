@@ -52,8 +52,17 @@ INSERT IGNORE INTO settings (setting_key, setting_value) VALUES
   ('VISITOR_CAMERA_SNAPSHOT_URL', ''),
   ('CNIC_CAMERA_STREAM_URL', ''),
   ('CNIC_CAMERA_SNAPSHOT_URL', ''),
+  ('VISITOR_CAMERA_TYPE', 'ip'),
+  ('CNIC_CAMERA_TYPE', 'ip'),
+  ('VISITOR_USB_DEVICE_ID', ''),
+  ('CNIC_USB_DEVICE_ID', ''),
   ('AUTO_CAPTURE_ENABLED', 'false'),
   ('AUTO_FACE_COUNTDOWN_SECONDS', '3'),
   ('AUTO_CNIC_COUNTDOWN_SECONDS', '3'),
   ('BACKUP_EXPORT_PATH', 'exports'),
-  ('OCR_ENABLED', 'true');
+  ('OCR_ENABLED', 'true'),
+  ('OCR_FAST_MODE', 'true'),
+  ('OCR_SECOND_PASS_ENABLED', 'false'),
+  ('OCR_PYTHON_ENABLED', 'false'),
+  ('OCR_PYTHON_BASE_URL', 'http://localhost:8001'),
+  ('OCR_PYTHON_TIMEOUT_MS', '10000');

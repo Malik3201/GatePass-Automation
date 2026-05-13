@@ -12,6 +12,7 @@
  */
 
 import { apiPost } from './api.js';
+import { captureVideoFrameAsBlob, uploadCapturedBlob, videoFrameToAnalysisImage } from './usb-camera.js';
 
 export const AutoState = {
   idle: 'idle',
@@ -30,6 +31,22 @@ export const AutoState = {
 const POLL_MS_MIN = 700;
 const POLL_MS_MAX = 1000;
 const STABLE_MS = 1000;
+const FACE_DETECTION_INTERVAL_MS = 700;
+const CNIC_DETECTION_INTERVAL_MS = 600;
+const MAX_DETECTION_IMAGE_WIDTH = 640;
+const CNIC_REQUIRED_STABLE_MS = 800;
+const CNIC_CONSECUTIVE_VALID_FRAMES = 2;
+const CNIC_POSITION_TOLERANCE = 0.2;
+const CNIC_MISSING_CANCEL_FRAMES = 2;
+const CNIC_MIN_ASPECT = 1.4;
+const CNIC_MAX_ASPECT = 1.9;
+const CNIC_MIN_AREA = 0.08;
+const CNIC_MAX_AREA = 0.9;
+const CNIC_MAX_TILT_DEG = 15;
+const CNIC_EXTREME_BLUR = 12;
+const MAX_PROXY_FAILS = 5;
+const FAST_CNIC_CAPTURE = true;
+const DEBUG_AUTO_MODE = false;
 
 function randomPollMs() {
   return POLL_MS_MIN + Math.floor(Math.random() * (POLL_MS_MAX - POLL_MS_MIN + 1));
@@ -45,13 +62,17 @@ export async function fetchSnapshotAsImage(snapshotUrl) {
   const res = await fetch(url);
   if (!res.ok) {
     let msg = `Snapshot proxy HTTP ${res.status}`;
+    let code = null;
     try {
       const j = await res.json();
       if (j && j.message) msg = j.message;
+      if (j && j.code) code = j.code;
     } catch {
       /* ignore */
     }
     const err = new Error(msg);
+    err.status = res.status;
+    err.code = code;
     err.hint = 'Check camera snapshot URLs in Settings and LAN connectivity.';
     throw err;
   }
@@ -78,6 +99,21 @@ export async function captureImage(snapshotUrl, type) {
   const res = await apiPost('/api/camera/capture', { snapshotUrl, type });
   if (!res || !res.path) throw new Error('Capture did not return a path');
   return res.path;
+}
+
+/** Natural pixel size for <img> or <video> (for overlays / analysis). */
+function mediaNaturalSize(el) {
+  if (!el) return { w: 0, h: 0 };
+  if (el.tagName === 'VIDEO') {
+    return {
+      w: el.videoWidth || el.clientWidth || 0,
+      h: el.videoHeight || el.clientHeight || 0,
+    };
+  }
+  return {
+    w: el.naturalWidth || el.width || 0,
+    h: el.naturalHeight || el.height || 0,
+  };
 }
 
 // --- face-api.js (optional) ---
@@ -181,8 +217,7 @@ export async function analyzeFace(imgEl) {
   if (!ready || !window.faceapi) {
     return { ok: false, reason: 'library', message: 'Face detection models not available.' };
   }
-  const w = imgEl.naturalWidth || imgEl.width;
-  const h = imgEl.naturalHeight || imgEl.height;
+  const { w, h } = mediaNaturalSize(imgEl);
   if (w < 80 || h < 80) {
     return { ok: false, reason: 'small', message: 'Image too small.' };
   }
@@ -216,8 +251,7 @@ export async function analyzeFace(imgEl) {
 /** Simple whole-frame sharpness hint (larger = sharper). */
 function quickLumaVariance(imgEl, sx = 48) {
   const c = document.createElement('canvas');
-  const w = imgEl.naturalWidth || imgEl.width;
-  const h = imgEl.naturalHeight || imgEl.height;
+  const { w, h } = mediaNaturalSize(imgEl);
   const sw = Math.min(sx, w);
   const sh = Math.max(1, Math.round((h / w) * sw));
   c.width = sw;
@@ -320,14 +354,13 @@ function loadOpenCvOnce() {
  * Operator should still verify CNIC framing; prefer fixing OpenCV load for better card detection.
  */
 function analyzeCnicCardFallback(imgEl) {
-  const w0 = imgEl.naturalWidth || imgEl.width;
-  const h0 = imgEl.naturalHeight || imgEl.height;
+  const { w: w0, h: h0 } = mediaNaturalSize(imgEl);
   if (w0 < 120 || h0 < 120) {
     return { ok: false, reason: 'nocard', message: 'Full CNIC not visible' };
   }
   const v = quickLumaVariance(imgEl, 72);
-  if (v < 10) {
-    return { ok: false, reason: 'blur', message: 'Image blurry, hold CNIC steady' };
+  if (v < CNIC_EXTREME_BLUR) {
+    return { ok: false, reason: 'blur-extreme', message: 'Too blurry, hold CNIC steady', blurVar: v };
   }
   const aspectFrame = Math.max(w0, h0) / Math.min(w0, h0);
   if (aspectFrame < 1.2) {
@@ -363,8 +396,7 @@ export async function analyzeCnicCard(imgEl) {
   }
 
   const canvas = document.createElement('canvas');
-  let w0 = imgEl.naturalWidth || imgEl.width;
-  let h0 = imgEl.naturalHeight || imgEl.height;
+  const { w: w0, h: h0 } = mediaNaturalSize(imgEl);
   if (!(w0 > 16) || !(h0 > 16)) {
     return analyzeCnicCardFallback(imgEl);
   }
@@ -403,11 +435,12 @@ export async function analyzeCnicCard(imgEl) {
     const stddev = new cv.Mat();
     cv.meanStdDev(lap, mean, stddev);
     const blurVar = (stddev.data64F[0] || 0) ** 2;
+    const blurWarn = blurVar < 22;
     lap.delete();
     mean.delete();
     stddev.delete();
-    if (blurVar < 35) {
-      return { ok: false, reason: 'blur', message: 'Image blurry, hold steady', blurVar };
+    if (blurVar < CNIC_EXTREME_BLUR) {
+      return { ok: false, reason: 'blur-extreme', message: 'Too blurry, hold steady', blurVar };
     }
 
     edges = new cv.Mat();
@@ -437,14 +470,14 @@ export async function analyzeCnicCard(imgEl) {
         const longSide = Math.max(rw, rh);
         const shortSide = Math.min(rw, rh);
         const aspect = longSide / shortSide;
-        if (aspect < 1.45 || aspect > 2.05) {
+        if (aspect < CNIC_MIN_ASPECT || aspect > CNIC_MAX_ASPECT) {
           approx.delete();
           c.delete();
           continue;
         }
         const area = rw * rh;
         const ar = area / (w * h);
-        if (ar < 0.14 || ar > 0.92) {
+        if (ar < CNIC_MIN_AREA || ar > CNIC_MAX_AREA) {
           approx.delete();
           c.delete();
           continue;
@@ -453,7 +486,7 @@ export async function analyzeCnicCard(imgEl) {
         const rectObj = cv.minAreaRect(approx);
         let ang = Math.abs(rectObj.angle || 0);
         const tilt = ang > 45 ? Math.abs(90 - ang) : ang;
-        if (tilt > 22) {
+        if (tilt > CNIC_MAX_TILT_DEG) {
           approx.delete();
           c.delete();
           continue;
@@ -468,6 +501,7 @@ export async function analyzeCnicCard(imgEl) {
             areaRatio: ar,
             angleDeg: tilt,
             blurVar,
+            blurWarn,
           };
         }
       }
@@ -489,8 +523,8 @@ export async function analyzeCnicCard(imgEl) {
       height: Math.round(best.rect.height * scaleYN),
     };
     const areaRatioNat = (rectNat.width * rectNat.height) / (w0 * h0);
-    const minSideFrac = 0.24;
-    const minAreaFrac = 0.14;
+    const minSideFrac = 0.2;
+    const minAreaFrac = CNIC_MIN_AREA;
     if (
       areaRatioNat < minAreaFrac ||
       rectNat.width < w0 * minSideFrac ||
@@ -554,6 +588,10 @@ function stepLabel(s) {
  * @param {(res: object) => void} opts.applyOcrFromResponse
  * @param {(path: string) => void} opts.onVisitorPhotoPath
  * @param {(path: string) => void} opts.onCnicFrontPath
+ * @param {(state: string) => void} [opts.onAutoStateChange]
+ * @param {() => { visitor: object, cnic: object }} [opts.getCameraConfig]
+ * @param {() => HTMLVideoElement | null} [opts.getVisitorUsbVideoEl]
+ * @param {() => HTMLVideoElement | null} [opts.getCnicUsbVideoEl]
  */
 export function bindAutoCapture(opts) {
   const {
@@ -564,6 +602,13 @@ export function bindAutoCapture(opts) {
     applyOcrFromResponse,
     onVisitorPhotoPath,
     onCnicFrontPath,
+    onAutoStateChange,
+    getCameraConfig = () => ({
+      visitor: { type: 'ip', streamUrl: '', snapshotUrl: '', usbDeviceId: '' },
+      cnic: { type: 'ip', streamUrl: '', snapshotUrl: '', usbDeviceId: '' },
+    }),
+    getVisitorUsbVideoEl = () => document.getElementById('autoUsbVisitor'),
+    getCnicUsbVideoEl = () => document.getElementById('autoUsbCnic'),
   } = opts;
 
   const el = (id) => document.getElementById(id);
@@ -573,10 +618,12 @@ export function bindAutoCapture(opts) {
   const statusEl = el('autoStatus');
   const countdownEl = el('autoCountdown');
   const stepEl = el('autoStep');
+  const cnicDebugEl = el('autoCnicDebug');
   const imgVisitor = el('autoStreamVisitor');
   const imgCnic = el('autoStreamCnic');
   const canvasVisitor = el('autoOverlayVisitor');
   const canvasCnic = el('autoOverlayCnic');
+  const autoModeBanner = el('autoModeBanner');
 
   let state = AutoState.idle;
   /** @type {ReturnType<typeof setInterval> | null} */
@@ -587,6 +634,22 @@ export function bindAutoCapture(opts) {
   let faceStableSince = 0;
   let cnicStableSince = 0;
   let lastCnicSig = '';
+  let lastCnicRect = null;
+  let cnicConsecutiveValid = 0;
+  let cnicProxyFailCount = 0;
+  let cnicNoCardCount = 0;
+  let cnicCountdownMissCount = 0;
+  let isCapturingCnic = false;
+  let cnicCountdownRunning = false;
+  let lastCnicDebug = null;
+  let isAutoRunning = false;
+  let isCapturingFace = false;
+  let isOcrRunning = false;
+  let currentVisitorSessionId = 0;
+
+  if (cnicDebugEl && !DEBUG_AUTO_MODE) {
+    cnicDebugEl.style.display = 'none';
+  }
 
   let prevVisitorBlobUrl = null;
   let prevCnicBlobUrl = null;
@@ -628,6 +691,20 @@ export function bindAutoCapture(opts) {
     if (statusEl) statusEl.textContent = message || '';
   }
 
+  function setCnicDebug(info = {}) {
+    if (!DEBUG_AUTO_MODE || !cnicDebugEl) return;
+    const cardDetected = info.cardDetected ? 'yes' : 'no';
+    const ratio = Number.isFinite(info.ratio) ? info.ratio.toFixed(2) : '-';
+    const area = Number.isFinite(info.area) ? `${Math.round(info.area * 100)}%` : '-';
+    const angle = Number.isFinite(info.angle) ? `${Math.round(info.angle)}°` : '-';
+    const blur = Number.isFinite(info.blur) ? Math.round(info.blur) : '-';
+    const stableMs = Number.isFinite(info.stableMs) ? `${Math.max(0, Math.round(info.stableMs))}ms` : '0ms';
+    const countdown = info.countdown || '-';
+    const failCount = Number.isFinite(info.proxyFails) ? info.proxyFails : 0;
+    cnicDebugEl.textContent =
+      `Card detected: ${cardDetected} | ratio ${ratio} | area ${area} | angle ${angle} | blur ${blur} | stable ${stableMs} | countdown ${countdown} | proxy fails ${failCount}`;
+  }
+
   function setAutoStep(s) {
     if (stepEl) stepEl.textContent = stepLabel(s);
   }
@@ -639,12 +716,64 @@ export function bindAutoCapture(opts) {
   function setState(s) {
     state = s;
     setAutoStep(s);
+    if (typeof onAutoStateChange === 'function') {
+      try {
+        onAutoStateChange(s);
+      } catch {
+        /* UI only */
+      }
+    }
+  }
+
+  function visitorSnapshotMissingMessage() {
+    const cfg = getCameraConfig().visitor;
+    if (cfg.type === 'usb') {
+      const v = getVisitorUsbVideoEl();
+      if (!cfg.usbDeviceId) return 'Visitor USB camera not selected in Settings.';
+      if (!v || !v.srcObject) return 'Visitor USB camera is not active. Reload the page or open Settings.';
+      if (v.readyState < 2) return 'Visitor USB camera is starting… wait for live video.';
+      return 'Visitor USB camera is not ready. Allow camera permission (try http://localhost:5000).';
+    }
+    const m = getSettingsMap() || {};
+    const stream = String(m.VISITOR_CAMERA_STREAM_URL || m.CAMERA_STREAM_URL || '').trim();
+    const legacySnap = String(m.CAMERA_SNAPSHOT_URL || '').trim();
+    const visSnap = String(m.VISITOR_CAMERA_SNAPSHOT_URL || '').trim();
+    if (legacySnap || visSnap) {
+      return 'Visitor snapshot URL missing. Set visitor or legacy camera snapshot in Settings.';
+    }
+    if (stream) {
+      return 'Preview active from stream, but auto capture needs a snapshot URL. Set snapshot in Settings.';
+    }
+    return 'Camera URLs not configured. Open Settings and set stream/snapshot URLs.';
+  }
+
+  function cnicSnapshotMissingMessage() {
+    const cfg = getCameraConfig().cnic;
+    if (cfg.type === 'usb') {
+      const v = getCnicUsbVideoEl();
+      if (!cfg.usbDeviceId) return 'CNIC USB camera not selected in Settings.';
+      if (!v || !v.srcObject) return 'CNIC USB camera is not active. Reload the page or open Settings.';
+      if (v.readyState < 2) return 'CNIC USB camera is starting… wait for live video.';
+      return 'CNIC USB camera is not ready. Allow camera permission (try http://localhost:5000).';
+    }
+    const m = getSettingsMap() || {};
+    const stream = String(
+      m.CNIC_CAMERA_STREAM_URL || m.VISITOR_CAMERA_STREAM_URL || m.CAMERA_STREAM_URL || ''
+    ).trim();
+    const snap = String(
+      m.CNIC_CAMERA_SNAPSHOT_URL || m.VISITOR_CAMERA_SNAPSHOT_URL || m.CAMERA_SNAPSHOT_URL || ''
+    ).trim();
+    if (!snap) return 'CNIC snapshot URL missing. Set CNIC or legacy camera snapshot in Settings.';
+    if (stream) {
+      return 'CNIC preview may use stream, but auto capture needs a snapshot URL. Set snapshot in Settings.';
+    }
+    return 'CNIC camera URLs not configured. Open Settings.';
   }
 
   function drawFaceOverlay(img, analysis) {
     if (!canvasVisitor || !img) return;
-    const cw = img.naturalWidth || img.width;
-    const ch = img.naturalHeight || img.height;
+    const { w: cw, h: ch } = mediaNaturalSize(img);
+    if (!(cw > 0) || !(ch > 0)) return;
     const dispW = img.clientWidth || cw;
     const dispH = img.clientHeight || ch;
     canvasVisitor.width = dispW;
@@ -663,8 +792,9 @@ export function bindAutoCapture(opts) {
 
   function drawCnicOverlay(img, analysis) {
     if (!canvasCnic || !img) return;
-    const cw = (analysis && analysis._naturalW) || img.naturalWidth || img.width;
-    const ch = (analysis && analysis._naturalH) || img.naturalHeight || img.height;
+    const ms = mediaNaturalSize(img);
+    const cw = (analysis && analysis._naturalW) || ms.w;
+    const ch = (analysis && analysis._naturalH) || ms.h;
     if (!(cw > 0) || !(ch > 0)) return;
     const dispW = img.clientWidth || cw;
     const dispH = img.clientHeight || ch;
@@ -695,10 +825,11 @@ export function bindAutoCapture(opts) {
   function cnicStatusFromAnalysis(a) {
     if (!a.ok) {
       if (a.reason === 'library') return 'Auto CNIC detection unavailable. Use manual capture.';
-      if (a.reason === 'blur') return 'Image blurry, hold CNIC steady';
+      if (a.reason === 'blur' || a.reason === 'blur-extreme') return 'Too blurry. Hold CNIC steady';
       if (a.reason === 'nocard') return 'Full CNIC not visible';
       return 'Place CNIC front side in the frame';
     }
+    if (a.blurWarn) return 'CNIC visible. Slight blur detected, hold a bit steadier';
     if (a._fallback) return 'Hold CNIC steady (simple detection — frame CNIC in the center)';
     return 'Hold CNIC steady';
   }
@@ -708,7 +839,18 @@ export function bindAutoCapture(opts) {
     return `${Math.round(a.rect.x / 4)}:${Math.round(a.rect.y / 4)}:${Math.round(a.rect.width / 4)}:${Math.round(a.rect.height / 4)}:${Math.round((a.angleDeg || 0) * 3)}`;
   }
 
+  function isCardCentered(a) {
+    if (!a || !a.ok || !a.rect) return false;
+    const nw = a._naturalW || 1;
+    const nh = a._naturalH || 1;
+    const cx = a.rect.x + a.rect.width / 2;
+    const cy = a.rect.y + a.rect.height / 2;
+    return Math.abs(cx - nw / 2) <= nw * 0.24 && Math.abs(cy - nh / 2) <= nh * 0.24;
+  }
+
   async function runOcrAfterCnicCapture(imagePath) {
+    if (isOcrRunning) return;
+    isOcrRunning = true;
     setState(AutoState.running_ocr);
     setAutoStatus('Running OCR...');
     const res = await apiPost('/api/ocr/cnic', { imagePath });
@@ -718,9 +860,11 @@ export function bindAutoCapture(opts) {
     const companyInput = document.getElementById('company');
     if (companyInput) companyInput.focus();
     setState(AutoState.ready_for_review);
+    isOcrRunning = false;
   }
 
   function stopAutoFlow() {
+    isAutoRunning = false;
     stopped = true;
     clearPoll();
     clearCountdownTimer();
@@ -731,17 +875,20 @@ export function bindAutoCapture(opts) {
     prevCnicBlobUrl = null;
     setState(AutoState.stopped);
     setAutoStatus('Auto flow stopped.');
+    if (autoModeBanner) autoModeBanner.style.display = chkEnable && chkEnable.checked ? 'block' : 'none';
   }
 
   /** Compare card boxes with tolerance (snapshot noise / OpenCV jitter between frames). */
   function cnicRectNear(ra, rr, naturalW) {
     if (!ra || !rr) return false;
-    const tol = Math.max(20, Math.floor((naturalW || 640) * 0.04));
+    const baseTol = Math.max(12, Math.floor((naturalW || 640) * 0.02));
+    const tolX = Math.max(baseTol, Math.floor(Math.max(ra.width, rr.width) * CNIC_POSITION_TOLERANCE));
+    const tolY = Math.max(baseTol, Math.floor(Math.max(ra.height, rr.height) * CNIC_POSITION_TOLERANCE));
     return (
-      Math.abs(ra.x - rr.x) <= tol &&
-      Math.abs(ra.y - rr.y) <= tol &&
-      Math.abs(ra.width - rr.width) <= tol &&
-      Math.abs(ra.height - rr.height) <= tol
+      Math.abs(ra.x - rr.x) <= tolX &&
+      Math.abs(ra.y - rr.y) <= tolY &&
+      Math.abs(ra.width - rr.width) <= tolX &&
+      Math.abs(ra.height - rr.height) <= tolY
     );
   }
 
@@ -789,6 +936,11 @@ export function bindAutoCapture(opts) {
   }
 
   async function startCnicPhase(cnicUrl) {
+    clearPoll();
+    const cnicCfg = getCameraConfig().cnic;
+    const isUsbCnic = cnicCfg.type === 'usb';
+    const cnicVideo = getCnicUsbVideoEl();
+
     setState(AutoState.waiting_cnic);
     setAutoStatus(
       'Place CNIC front side in the frame. If this is your first CNIC auto-capture, OpenCV may load for up to 1–2 minutes.'
@@ -796,57 +948,181 @@ export function bindAutoCapture(opts) {
     faceStableSince = 0;
     cnicStableSince = 0;
     lastCnicSig = '';
+    lastCnicRect = null;
+    cnicConsecutiveValid = 0;
+    cnicProxyFailCount = 0;
+    cnicNoCardCount = 0;
+    cnicCountdownMissCount = 0;
+    isCapturingCnic = false;
+    cnicCountdownRunning = false;
+    lastCnicDebug = null;
+    setCnicDebug({
+      cardDetected: false,
+      ratio: 0,
+      area: 0,
+      angle: 0,
+      blur: 0,
+      stableMs: 0,
+      countdown: 'idle',
+      proxyFails: 0,
+    });
 
     const tick = async () => {
-      if (stopped) return;
+      if (stopped || isCapturingCnic || cnicCountdownRunning) return;
       let handle = null;
       try {
-        handle = await fetchSnapshotAsImage(cnicUrl);
-        const img = handle.img;
-        setCnicPreviewFromBlobUrl(img.src);
-        const analysis = await analyzeCnicCard(img);
-        drawCnicOverlay(imgCnic, analysis);
-
-        if (!analysis.ok) {
-          setAutoStatus(cnicStatusFromAnalysis(analysis));
-          cnicStableSince = 0;
-          lastCnicSig = '';
+        try {
+          if (isUsbCnic) {
+            if (!cnicVideo || cnicVideo.readyState < 2) return;
+            handle = await videoFrameToAnalysisImage(cnicVideo, MAX_DETECTION_IMAGE_WIDTH);
+          } else {
+            handle = await fetchSnapshotAsImage(cnicUrl);
+          }
+          cnicProxyFailCount = 0;
+        } catch (fetchErr) {
+          cnicProxyFailCount += 1;
+          setAutoStatus(
+            cnicProxyFailCount >= MAX_PROXY_FAILS
+              ? 'CNIC camera snapshot failed. Check camera URL/Wi-Fi. You can use manual capture.'
+              : 'Camera frame missed, retrying...'
+          );
+          setCnicDebug({
+            ...(lastCnicDebug || {}),
+            countdown: cnicCountdownRunning ? 'running' : 'waiting',
+            proxyFails: cnicProxyFailCount,
+          });
+          if (cnicProxyFailCount >= MAX_PROXY_FAILS) {
+            clearPoll();
+            setState(AutoState.error);
+          }
           return;
         }
 
-        const sig = cnicSig(analysis);
+        const img = handle.img;
+        if (!isUsbCnic) setCnicPreviewFromBlobUrl(img.src);
+        const analysis = await analyzeCnicCard(img);
+        drawCnicOverlay(isUsbCnic && cnicVideo ? cnicVideo : imgCnic, analysis);
         const now = Date.now();
-        if (sig !== lastCnicSig) {
+        const stableMs = cnicStableSince ? now - cnicStableSince : 0;
+        lastCnicDebug = {
+          cardDetected: analysis.ok,
+          ratio: analysis.aspect,
+          area: analysis.areaRatio,
+          angle: analysis.angleDeg,
+          blur: analysis.blurVar,
+          stableMs,
+          countdown: cnicCountdownRunning ? 'running' : 'waiting',
+          proxyFails: cnicProxyFailCount,
+        };
+        setCnicDebug(lastCnicDebug);
+
+        if (!analysis.ok) {
+          cnicNoCardCount += 1;
+          if (!cnicCountdownRunning && cnicNoCardCount >= CNIC_MISSING_CANCEL_FRAMES) {
+            cnicStableSince = 0;
+            cnicConsecutiveValid = 0;
+            lastCnicSig = '';
+            lastCnicRect = null;
+          }
+          setAutoStatus(cnicStatusFromAnalysis(analysis));
+          if (isUsbCnic && handle) handle.revoke();
+          return;
+        }
+
+        cnicNoCardCount = 0;
+        const sig = cnicSig(analysis);
+        if (!cnicStableSince) cnicStableSince = now;
+        const imgNw = mediaNaturalSize(img).w;
+        const rectNear = lastCnicRect
+          ? cnicRectNear(
+              analysis.rect,
+              lastCnicRect,
+              analysis._naturalW || imgNw
+            )
+          : true;
+        if (sig !== lastCnicSig && !rectNear) {
           lastCnicSig = sig;
           cnicStableSince = now;
+          cnicConsecutiveValid = 1;
+        } else {
+          cnicConsecutiveValid += 1;
+          if (!lastCnicSig) lastCnicSig = sig;
         }
+        lastCnicRect = analysis.rect ? { ...analysis.rect } : null;
         setAutoStatus(cnicStatusFromAnalysis(analysis));
-        if (now - cnicStableSince < STABLE_MS) return;
+
+        const isStableByFrames = cnicConsecutiveValid >= CNIC_CONSECUTIVE_VALID_FRAMES;
+        const isStableByTime = now - cnicStableSince >= CNIC_REQUIRED_STABLE_MS;
+        const centered = isCardCentered(analysis);
+        if (!centered || (!isStableByFrames && !isStableByTime)) {
+          if (isUsbCnic && handle) handle.revoke();
+          return;
+        }
+
+        if (isUsbCnic && handle) handle.revoke();
 
         clearPoll();
+        cnicCountdownRunning = true;
         setState(AutoState.cnic_countdown);
-        const secs = parseInt(String(getSettingsMap().AUTO_CNIC_COUNTDOWN_SECONDS || '3'), 10) || 3;
-        setAutoStatus(`Capturing CNIC in ${secs}...`);
-
-        const refRect = { ...analysis.rect };
-        const refNw = analysis._naturalW || img.naturalWidth || img.width;
-        const cd = await startValidatedCountdown(secs, async () => {
-          const h = await fetchSnapshotAsImage(cnicUrl);
-          try {
-            const a = await analyzeCnicCard(h.img);
-            drawCnicOverlay(imgCnic, a);
-            if (!a.ok) return { ok: false };
-            const nw = a._naturalW || refNw;
-            if (!cnicRectNear(a.rect, refRect, nw)) return { ok: false };
-            return { ok: true };
-          } finally {
-            h.revoke();
-          }
+        const secs = parseInt(String(getSettingsMap().AUTO_CNIC_COUNTDOWN_SECONDS || '2'), 10) || 2;
+        const countdownSecs = FAST_CNIC_CAPTURE ? Math.min(secs, 2) : secs;
+        setAutoStatus(`Capturing CNIC in ${countdownSecs}...`);
+        setCnicDebug({
+          ...lastCnicDebug,
+          stableMs: now - cnicStableSince,
+          countdown: `in ${countdownSecs}s`,
+          proxyFails: cnicProxyFailCount,
         });
 
+        const refRect = { ...analysis.rect };
+        const refNw = analysis._naturalW || imgNw;
+        const cd = await startValidatedCountdown(Math.max(1, countdownSecs), async () => {
+          let h = null;
+          try {
+            if (isUsbCnic) {
+              if (!cnicVideo || cnicVideo.readyState < 2) return { ok: false };
+              h = await videoFrameToAnalysisImage(cnicVideo, MAX_DETECTION_IMAGE_WIDTH);
+            } else {
+              h = await fetchSnapshotAsImage(cnicUrl);
+            }
+            cnicProxyFailCount = 0;
+            const a = await analyzeCnicCard(h.img);
+            drawCnicOverlay(isUsbCnic && cnicVideo ? cnicVideo : imgCnic, a);
+            if (!a.ok) {
+              cnicCountdownMissCount += 1;
+              return { ok: cnicCountdownMissCount < CNIC_MISSING_CANCEL_FRAMES };
+            }
+            cnicCountdownMissCount = 0;
+            const nw = a._naturalW || refNw;
+            if (!cnicRectNear(a.rect, refRect, nw)) return { ok: true };
+            if ((a.areaRatio || 0) < CNIC_MIN_AREA * 0.8) return { ok: false };
+            setCnicDebug({
+              cardDetected: true,
+              ratio: a.aspect,
+              area: a.areaRatio,
+              angle: a.angleDeg,
+              blur: a.blurVar,
+              stableMs: Date.now() - cnicStableSince,
+              countdown: 'running',
+              proxyFails: cnicProxyFailCount,
+            });
+            return { ok: true };
+          } catch {
+            cnicProxyFailCount += 1;
+            if (cnicProxyFailCount >= MAX_PROXY_FAILS) return { ok: false };
+            return { ok: true };
+          } finally {
+            if (h) h.revoke();
+          }
+        });
+        cnicCountdownRunning = false;
+
         if (cd === 'cancel') {
-          setAutoStatus('CNIC moved, countdown cancelled');
+          setAutoStatus('CNIC lost, countdown cancelled');
           setState(AutoState.waiting_cnic);
+          cnicConsecutiveValid = 0;
+          cnicNoCardCount = 0;
+          cnicCountdownMissCount = 0;
           pollTimer = setInterval(() => {
             tick().catch(() => {});
           }, randomPollMs());
@@ -854,13 +1130,25 @@ export function bindAutoCapture(opts) {
         }
         if (cd === 'stopped') return;
 
+        isCapturingCnic = true;
         setState(AutoState.capturing_cnic);
         setAutoStatus('Capturing CNIC...');
-        const path = await captureImage(cnicUrl, 'cnic-front');
+        let path;
+        if (isUsbCnic) {
+          if (!cnicVideo || cnicVideo.readyState < 2) throw new Error('CNIC USB video not ready.');
+          const blob = await captureVideoFrameAsBlob(cnicVideo, { quality: 0.92, mimeType: 'image/jpeg' });
+          const up = await uploadCapturedBlob('cnic-front', blob);
+          path = up.path;
+        } else {
+          path = await captureImage(cnicUrl, 'cnic-front');
+        }
         onCnicFrontPath(path);
         setAutoStatus('CNIC captured');
         await runOcrAfterCnicCapture(path);
+        isCapturingCnic = false;
       } catch (e) {
+        isCapturingCnic = false;
+        cnicCountdownRunning = false;
         setAutoStatus(e.message || 'CNIC snapshot failed');
       }
       // Preview blob URL is managed by setCnicPreviewFromBlobUrl / stopAutoFlow.
@@ -868,16 +1156,129 @@ export function bindAutoCapture(opts) {
 
     pollTimer = setInterval(() => {
       tick().catch(() => {});
-    }, randomPollMs());
+    }, CNIC_DETECTION_INTERVAL_MS);
   }
 
-  async function startFacePhase(visitorUrl) {
+  async function startFacePhaseUsb(visitorVideo) {
     setState(AutoState.waiting_face);
     setAutoStatus('Waiting for visitor face...');
     faceStableSince = 0;
 
     const tick = async () => {
-      if (stopped) return;
+      if (stopped || !isAutoRunning || isCapturingFace) return;
+      try {
+        if (!visitorVideo || visitorVideo.readyState < 2) return;
+
+        const blurV = quickLumaVariance(visitorVideo);
+        if (blurV < 10) {
+          setAutoStatus('Image blurry, hold steady');
+          faceStableSince = 0;
+          drawFaceOverlay(visitorVideo, { ok: false });
+          return;
+        }
+
+        const analysis = await analyzeFace(visitorVideo);
+        drawFaceOverlay(visitorVideo, analysis);
+
+        if (!analysis.ok) {
+          setAutoStatus(faceStatusFromAnalysis(analysis));
+          faceStableSince = 0;
+          return;
+        }
+
+        const now = Date.now();
+        if (!faceStableSince) faceStableSince = now;
+        setAutoStatus(faceStatusFromAnalysis(analysis));
+        if (now - faceStableSince < STABLE_MS) return;
+
+        clearPoll();
+        setState(AutoState.face_countdown);
+        const secs = parseInt(String(getSettingsMap().AUTO_FACE_COUNTDOWN_SECONDS || '2'), 10) || 2;
+        setAutoStatus(`Hold still — capturing in ${secs}...`);
+
+        const stableRef = { ...analysis.box };
+
+        const cd = await startValidatedCountdown(secs, async () => {
+          const a = await analyzeFace(visitorVideo);
+          drawFaceOverlay(visitorVideo, a);
+          if (!a.ok) return { ok: false };
+          const b = a.box;
+          const drift =
+            Math.abs(b.x - stableRef.x) +
+            Math.abs(b.y - stableRef.y) +
+            Math.abs(b.width - stableRef.width) * 0.5 +
+            Math.abs(b.height - stableRef.height) * 0.5;
+          const w = visitorVideo.videoWidth || visitorVideo.clientWidth;
+          if (drift > w * 0.18) return { ok: false };
+          return { ok: true };
+        });
+
+        if (cd === 'cancel') {
+          setAutoStatus('Face moved, countdown cancelled');
+          setState(AutoState.waiting_face);
+          faceStableSince = 0;
+          pollTimer = setInterval(() => {
+            tick().catch(() => {});
+          }, randomPollMs());
+          return;
+        }
+        if (cd === 'stopped') return;
+
+        setState(AutoState.capturing_face);
+        isCapturingFace = true;
+        setAutoStatus('Capturing visitor photo...');
+        const blob = await captureVideoFrameAsBlob(visitorVideo, { quality: 0.92, mimeType: 'image/jpeg' });
+        const up = await uploadCapturedBlob('visitor', blob);
+        onVisitorPhotoPath(up.path);
+        setAutoStatus('Visitor photo captured');
+        isCapturingFace = false;
+
+        const cCfg = getCameraConfig().cnic;
+        if (cCfg.type === 'usb') {
+          if (!cCfg.usbDeviceId) {
+            setState(AutoState.error);
+            const msg = cnicSnapshotMissingMessage();
+            setAutoStatus(msg);
+            showMainMsg(msg, 'error');
+            return;
+          }
+          const cv = getCnicUsbVideoEl();
+          if (!cv || !cv.srcObject || cv.readyState < 2) {
+            setState(AutoState.error);
+            setAutoStatus('CNIC USB preview not ready.');
+            showMainMsg('CNIC USB camera is not previewing. Check Settings and camera permission.', 'error');
+            return;
+          }
+          await startCnicPhase('');
+        } else {
+          const cnicUrl = resolveCnicSnapshotUrl();
+          if (!cnicUrl) {
+            setState(AutoState.error);
+            const msg = cnicSnapshotMissingMessage();
+            setAutoStatus(msg);
+            showMainMsg(msg, 'error');
+            return;
+          }
+          await startCnicPhase(cnicUrl);
+        }
+      } catch (e) {
+        isCapturingFace = false;
+        setAutoStatus(e.message || 'USB face capture failed');
+      }
+    };
+
+    pollTimer = setInterval(() => {
+      tick().catch(() => {});
+    }, FACE_DETECTION_INTERVAL_MS);
+  }
+
+  async function startFacePhaseIp(visitorUrl) {
+    setState(AutoState.waiting_face);
+    setAutoStatus('Waiting for visitor face...');
+    faceStableSince = 0;
+
+    const tick = async () => {
+      if (stopped || !isAutoRunning || isCapturingFace) return;
       let handle = null;
       try {
         handle = await fetchSnapshotAsImage(visitorUrl);
@@ -909,8 +1310,8 @@ export function bindAutoCapture(opts) {
 
         clearPoll();
         setState(AutoState.face_countdown);
-        const secs = parseInt(String(getSettingsMap().AUTO_FACE_COUNTDOWN_SECONDS || '3'), 10) || 3;
-        setAutoStatus(`Capturing in ${secs}...`);
+        const secs = parseInt(String(getSettingsMap().AUTO_FACE_COUNTDOWN_SECONDS || '2'), 10) || 2;
+        setAutoStatus(`Hold still — capturing in ${secs}...`);
 
         const stableRef = { ...analysis.box };
 
@@ -927,7 +1328,7 @@ export function bindAutoCapture(opts) {
               Math.abs(b.width - stableRef.width) * 0.5 +
               Math.abs(b.height - stableRef.height) * 0.5;
             const w = h.img.naturalWidth || h.img.width;
-            if (drift > w * 0.12) return { ok: false };
+            if (drift > w * 0.18) return { ok: false };
             return { ok: true };
           } finally {
             h.revoke();
@@ -946,19 +1347,41 @@ export function bindAutoCapture(opts) {
         if (cd === 'stopped') return;
 
         setState(AutoState.capturing_face);
+        isCapturingFace = true;
         setAutoStatus('Capturing visitor photo...');
         const path = await captureImage(visitorUrl, 'visitor');
         onVisitorPhotoPath(path);
         setAutoStatus('Visitor photo captured');
+        isCapturingFace = false;
 
-        const cnicUrl = resolveCnicSnapshotUrl();
-        if (!cnicUrl) {
-          setState(AutoState.error);
-          setAutoStatus('CNIC snapshot URL missing. Set CNIC or legacy camera snapshot in Settings.');
-          showMainMsg('CNIC snapshot URL missing.', 'error');
-          return;
+        const cCfg = getCameraConfig().cnic;
+        if (cCfg.type === 'usb') {
+          if (!cCfg.usbDeviceId) {
+            setState(AutoState.error);
+            const msg = cnicSnapshotMissingMessage();
+            setAutoStatus(msg);
+            showMainMsg(msg, 'error');
+            return;
+          }
+          const cv = getCnicUsbVideoEl();
+          if (!cv || !cv.srcObject || cv.readyState < 2) {
+            setState(AutoState.error);
+            setAutoStatus('CNIC USB preview not ready.');
+            showMainMsg('CNIC USB camera is not previewing. Check Settings and camera permission.', 'error');
+            return;
+          }
+          await startCnicPhase('');
+        } else {
+          const cnicUrl = resolveCnicSnapshotUrl();
+          if (!cnicUrl) {
+            setState(AutoState.error);
+            const msg = cnicSnapshotMissingMessage();
+            setAutoStatus(msg);
+            showMainMsg(msg, 'error');
+            return;
+          }
+          await startCnicPhase(cnicUrl);
         }
-        await startCnicPhase(cnicUrl);
       } catch (e) {
         setAutoStatus(e.message || 'Snapshot failed');
       }
@@ -967,7 +1390,7 @@ export function bindAutoCapture(opts) {
 
     pollTimer = setInterval(() => {
       tick().catch(() => {});
-    }, randomPollMs());
+    }, FACE_DETECTION_INTERVAL_MS);
   }
 
   async function startAutoFlow() {
@@ -975,6 +1398,9 @@ export function bindAutoCapture(opts) {
       showMainMsg('Enable Auto Mode first.', 'warn');
       return;
     }
+    if (isAutoRunning) return;
+    currentVisitorSessionId += 1;
+    isAutoRunning = true;
     stopped = false;
     clearPoll();
     clearCountdownTimer();
@@ -984,12 +1410,34 @@ export function bindAutoCapture(opts) {
     prevVisitorBlobUrl = null;
     prevCnicBlobUrl = null;
 
-    const visitorUrl = resolveVisitorSnapshotUrl();
-    if (!visitorUrl) {
-      setState(AutoState.error);
-      setAutoStatus('Visitor snapshot URL missing. Set visitor or legacy camera snapshot in Settings.');
-      showMainMsg('Visitor snapshot URL missing.', 'error');
-      return;
+    const cam = getCameraConfig();
+    if (cam.visitor.type === 'usb') {
+      const vv = getVisitorUsbVideoEl();
+      if (!cam.visitor.usbDeviceId) {
+        setState(AutoState.error);
+        const msg = visitorSnapshotMissingMessage();
+        setAutoStatus(msg);
+        showMainMsg(msg, 'error');
+        return;
+      }
+      if (!vv || !vv.srcObject || vv.readyState < 2) {
+        setState(AutoState.error);
+        setAutoStatus('Visitor USB preview is not ready. Wait for live video or allow camera permission.');
+        showMainMsg(
+          'Visitor USB camera must show live video before auto capture. Use http://localhost:5000 or allow camera access.',
+          'error'
+        );
+        return;
+      }
+    } else {
+      const visitorUrl = resolveVisitorSnapshotUrl();
+      if (!visitorUrl) {
+        setState(AutoState.error);
+        const msg = visitorSnapshotMissingMessage();
+        setAutoStatus(msg);
+        showMainMsg(msg, 'error');
+        return;
+      }
     }
 
     setAutoStatus('Loading face detection library…');
@@ -1023,18 +1471,89 @@ export function bindAutoCapture(opts) {
       return;
     }
 
-    await startFacePhase(visitorUrl);
+    const cam3 = getCameraConfig();
+    if (cam3.visitor.type === 'usb') {
+      await startFacePhaseUsb(getVisitorUsbVideoEl());
+    } else {
+      await startFacePhaseIp(resolveVisitorSnapshotUrl());
+    }
   }
 
-  if (btnStart) btnStart.addEventListener('click', () => startAutoFlow().catch((e) => showMainMsg(e.message, 'error')));
+  if (btnStart)
+    btnStart.addEventListener('click', () => startAutoFlow().catch((e) => showMainMsg(e.message, 'error')));
   if (btnStop) btnStop.addEventListener('click', () => stopAutoFlow());
+
+  if (chkEnable) {
+    chkEnable.addEventListener('change', () => {
+      if (chkEnable.checked) {
+        if (autoModeBanner) autoModeBanner.style.display = 'block';
+        startAutoFlow().catch((e) => showMainMsg(e.message, 'error'));
+      } else {
+        if (autoModeBanner) autoModeBanner.style.display = 'none';
+        stopAutoFlow();
+      }
+    });
+  }
 
   function syncEnableFromSettings() {
     const m = getSettingsMap() || {};
     if (chkEnable) {
       chkEnable.checked = String(m.AUTO_CAPTURE_ENABLED || '').toLowerCase() === 'true';
     }
+    if (autoModeBanner) {
+      autoModeBanner.style.display = chkEnable && chkEnable.checked ? 'block' : 'none';
+    }
+    const alwaysOn = String(m.AUTO_MODE_ALWAYS_ON || 'true').toLowerCase() === 'true';
+    if (chkEnable && chkEnable.checked && alwaysOn) {
+      setAutoStatus('Auto mode active — waiting for visitor');
+      startAutoFlow().catch((e) => showMainMsg(e.message, 'error'));
+    }
   }
 
-  return { syncEnableFromSettings, stopAutoFlow };
+  async function restartForNextVisitor() {
+    const m = getSettingsMap() || {};
+    const alwaysOn = String(m.AUTO_MODE_ALWAYS_ON || 'true').toLowerCase() === 'true';
+    if (!chkEnable || !chkEnable.checked || !alwaysOn) return;
+    stopAutoFlow();
+    stopped = false;
+    isAutoRunning = true;
+    faceStableSince = 0;
+    cnicStableSince = 0;
+    lastCnicSig = '';
+    lastCnicRect = null;
+    cnicConsecutiveValid = 0;
+    cnicProxyFailCount = 0;
+    cnicNoCardCount = 0;
+    cnicCountdownMissCount = 0;
+    isCapturingFace = false;
+    isCapturingCnic = false;
+    isOcrRunning = false;
+    setCountdownDisplay(0);
+    const camR = getCameraConfig();
+    if (camR.visitor.type === 'usb') {
+      const vv = getVisitorUsbVideoEl();
+      if (!camR.visitor.usbDeviceId || !vv || !vv.srcObject || vv.readyState < 2) {
+        setState(AutoState.error);
+        const msg = visitorSnapshotMissingMessage();
+        setAutoStatus(msg);
+        showMainMsg(msg, 'error');
+        return;
+      }
+      setAutoStatus('Auto mode active — waiting for visitor');
+      await startFacePhaseUsb(vv);
+      return;
+    }
+    const visitorUrl = resolveVisitorSnapshotUrl();
+    if (!visitorUrl) {
+      setState(AutoState.error);
+      const msg = visitorSnapshotMissingMessage();
+      setAutoStatus(msg);
+      showMainMsg(msg, 'error');
+      return;
+    }
+    setAutoStatus('Auto mode active — waiting for visitor');
+    await startFacePhaseIp(visitorUrl);
+  }
+
+  return { syncEnableFromSettings, stopAutoFlow, restartForNextVisitor };
 }

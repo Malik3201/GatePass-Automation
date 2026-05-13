@@ -35,10 +35,14 @@ exports.snapshotProxy = async (req, res) => {
   } catch (e) {
     if (res.headersSent) return;
     const status = e.status || 500;
+    const snapshotUrl = req.query && req.query.url ? decodeURIComponent(String(req.query.url)) : null;
     return res.status(status).json({
       success: false,
-      message: e.message || 'Proxy failed',
-      hint: e.hint || 'Check the camera URL and that this server can reach it on the LAN.',
+      message: 'Unable to fetch camera snapshot',
+      hint: 'Open the snapshot URL directly in browser and confirm it shows an image.',
+      url: e.url || snapshotUrl,
+      code: e.code || null,
+      detail: e.message || 'Proxy failed',
     });
   }
 };

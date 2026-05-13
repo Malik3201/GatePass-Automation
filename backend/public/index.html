@@ -6,41 +6,87 @@
     <title>Gate Pass Automation — Dashboard</title>
     <link rel="stylesheet" href="/assets/css/style.css" />
   </head>
-  <body>
-    <header class="site-header">
-      <div>
-        <h1>Gate Pass Automation System</h1>
-        <div class="sub" id="companyLine">Company: …</div>
+  <body class="has-sidebar">
+    <aside class="app-sidebar no-print" aria-label="Main navigation">
+      <div class="app-sidebar-brand">
+        <p class="brand-title">GatePass Automation</p>
+        <p class="brand-sub">Visitor Management</p>
       </div>
-      <div class="sub">Local / LAN</div>
-    </header>
-    <main>
-      <section class="card">
-        <h2>Menu</h2>
-        <div class="nav-cards">
-          <a class="nav-card" href="/visitor-entry.html">
-            <strong>New Visitor Entry</strong>
-            <span>Camera, CNIC, OCR, save visitor</span>
-          </a>
-          <a class="nav-card" href="/visitors.html">
-            <strong>Visitors List</strong>
-            <span>Search, checkout, open pass</span>
-          </a>
-          <a class="nav-card" href="/settings.html">
-            <strong>Settings</strong>
-            <span>Company, gate, camera URLs</span>
-          </a>
-          <a class="nav-card" href="/export.html">
-            <strong>Export / Backup</strong>
-            <span>Daily CSV, Excel, image backup</span>
-          </a>
+      <nav class="app-nav">
+        <a class="active" href="/"><span class="nav-ico" aria-hidden="true">▣</span> Dashboard</a>
+        <a href="/visitor-entry.html"><span class="nav-ico" aria-hidden="true">▸</span> New Visitor Entry</a>
+        <a href="/visitors.html"><span class="nav-ico" aria-hidden="true">☰</span> Visitor Log</a>
+        <a href="/settings.html"><span class="nav-ico" aria-hidden="true">⚙</span> Settings</a>
+        <a href="/export.html"><span class="nav-ico" aria-hidden="true">⬇</span> Export / Backup</a>
+      </nav>
+    </aside>
+
+    <div class="app-wrap">
+      <header class="app-topbar no-print">
+        <h1 class="app-topbar-title">Dashboard</h1>
+        <div class="app-topbar-meta">
+          <span class="pill"><span aria-hidden="true">●</span> Local system</span>
+          <span class="pill-muted" id="topbarClock">—</span>
         </div>
-        <p class="help" style="margin-top: 14px">
-          Open this site from the same machine or another device on your Wi‑Fi using your laptop’s LAN IP and port
-          (example: <code>http://192.168.1.10:5000</code>).
-        </p>
-      </section>
-    </main>
+      </header>
+
+      <main class="app-main">
+        <div class="dashboard-hero">
+          <h1>Gate Pass Automation Dashboard</h1>
+          <p class="lead" id="companyLine">Company: …</p>
+        </div>
+
+        <div class="dashboard-metrics">
+          <div class="metric-card">
+            <div class="label">Today — visitors</div>
+            <div class="value" id="metricToday">—</div>
+            <div class="hint">Records with time in today</div>
+          </div>
+          <div class="metric-card">
+            <div class="label">Currently inside</div>
+            <div class="value" id="metricInside">—</div>
+            <div class="hint">Checked in today, no checkout yet</div>
+          </div>
+          <div class="metric-card">
+            <div class="label">Checked out today</div>
+            <div class="value" id="metricCheckedOut">—</div>
+            <div class="hint">Had checkout time today</div>
+          </div>
+          <div class="metric-card">
+            <div class="label">Total records (loaded)</div>
+            <div class="value" id="metricTotal">—</div>
+            <div class="hint">Latest batch (up to 500)</div>
+          </div>
+        </div>
+
+        <section class="card">
+          <h2>Quick actions</h2>
+          <div class="nav-cards">
+            <a class="nav-card" href="/visitor-entry.html">
+              <strong>New Visitor Entry</strong>
+              <span>Cameras, CNIC, OCR, save &amp; print pass</span>
+            </a>
+            <a class="nav-card" href="/visitors.html">
+              <strong>Visitor Log Database</strong>
+              <span>Search, checkout, open pass</span>
+            </a>
+            <a class="nav-card" href="/settings.html">
+              <strong>Settings</strong>
+              <span>Company, gate, camera URLs, auto capture</span>
+            </a>
+            <a class="nav-card" href="/export.html">
+              <strong>Export / backup</strong>
+              <span>Daily CSV, Excel, image backup</span>
+            </a>
+          </div>
+          <p class="help" style="margin-top: 16px">
+            Open this site from another device on your LAN using this PC’s IP and port (example:
+            <code>http://192.168.1.10:5000</code>).
+          </p>
+        </section>
+      </main>
+    </div>
+
     <script type="module" src="/assets/js/index.js"></script>
   </body>
 </html>

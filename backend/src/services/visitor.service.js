@@ -23,6 +23,10 @@ const VISITOR_COLUMNS = [
   'created_by',
 ];
 
+function cnicDigitsOnly(cnic) {
+  return String(cnic || '').replace(/\D/g, '');
+}
+
 function buildListFilters(q) {
   const conditions = [];
   const params = [];
@@ -32,12 +36,25 @@ function buildListFilters(q) {
     params.push(q.date);
   }
   if (q.cnic_no) {
-    conditions.push('cnic_no LIKE ?');
-    params.push(`%${q.cnic_no}%`);
+    const raw = String(q.cnic_no).trim();
+    const digits = cnicDigitsOnly(raw);
+    if (digits.length === 13) {
+      conditions.push(
+        "REPLACE(REPLACE(REPLACE(TRIM(cnic_no), '-', ''), ' ', ''), '_', '') = ?"
+      );
+      params.push(digits);
+    } else {
+      conditions.push('cnic_no LIKE ?');
+      params.push(`%${raw}%`);
+    }
   }
   if (q.visitor_name) {
     conditions.push('visitor_name LIKE ?');
     params.push(`%${q.visitor_name}%`);
+  }
+  if (q.company) {
+    conditions.push('company LIKE ?');
+    params.push(`%${String(q.company).trim()}%`);
   }
   if (q.person_to_meet) {
     conditions.push('person_to_meet LIKE ?');
@@ -47,6 +64,11 @@ function buildListFilters(q) {
     conditions.push('pass_no = ?');
     params.push(q.pass_no);
   }
+  if (q.status === 'in') {
+    conditions.push('time_out IS NULL');
+  } else if (q.status === 'out') {
+    conditions.push('time_out IS NOT NULL');
+  }
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   return { where, params };
@@ -54,7 +76,7 @@ function buildListFilters(q) {
 
 async function listVisitors(queryParams) {
   const { where, params } = buildListFilters(queryParams);
-  const sql = `SELECT * FROM visitors ${where} ORDER BY id DESC LIMIT 500`;
+  const sql = `SELECT * FROM visitors ${where} ORDER BY COALESCE(time_in, created_at) DESC, id DESC LIMIT 500`;
   return query(sql, params);
 }
 

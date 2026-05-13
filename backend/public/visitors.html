@@ -3,65 +3,107 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Visitors — Gate Pass</title>
+    <title>Visitor Log Database — Gate Pass</title>
     <link rel="stylesheet" href="/assets/css/style.css" />
   </head>
-  <body>
-    <header class="site-header">
-      <div>
-        <h1>Visitors</h1>
-        <div class="sub"><a href="/">← Dashboard</a> · <a href="/visitor-entry.html">New entry</a></div>
+  <body class="has-sidebar">
+    <aside class="app-sidebar no-print" aria-label="Main navigation">
+      <div class="app-sidebar-brand">
+        <p class="brand-title">GatePass Automation</p>
+        <p class="brand-sub">Visitor Management</p>
       </div>
-    </header>
-    <main>
-      <section class="card">
-        <h2>Search</h2>
-        <div class="grid cols-2">
-          <div>
-            <label for="fDate">Date (time in / created)</label>
-            <input id="fDate" type="date" />
-          </div>
-          <div>
-            <label for="fCnic">CNIC (partial)</label>
-            <input id="fCnic" type="text" placeholder="12345" />
-          </div>
-          <div>
-            <label for="fName">Visitor name</label>
-            <input id="fName" type="text" />
-          </div>
-          <div>
-            <label for="fMeet">Person to meet</label>
-            <input id="fMeet" type="text" />
-          </div>
-        </div>
-        <div class="row" style="margin-top: 12px">
-          <button class="btn" type="button" id="searchBtn">Search</button>
-          <button class="btn secondary" type="button" id="clearBtn">Clear</button>
-        </div>
-      </section>
+      <nav class="app-nav">
+        <a href="/"><span class="nav-ico" aria-hidden="true">▣</span> Dashboard</a>
+        <a href="/visitor-entry.html"><span class="nav-ico" aria-hidden="true">▸</span> New Visitor Entry</a>
+        <a class="active" href="/visitors.html"><span class="nav-ico" aria-hidden="true">☰</span> Visitor Log</a>
+        <a href="/settings.html"><span class="nav-ico" aria-hidden="true">⚙</span> Settings</a>
+        <a href="/export.html"><span class="nav-ico" aria-hidden="true">⬇</span> Export / Backup</a>
+      </nav>
+    </aside>
 
-      <section class="card">
-        <h2>Results</h2>
-        <div id="msg"></div>
-        <div style="overflow-x: auto">
-          <table class="data" id="tbl">
-            <thead>
-              <tr>
-                <th>Pass</th>
-                <th>Name</th>
-                <th>CNIC</th>
-                <th>Company</th>
-                <th>Meet</th>
-                <th>Time in</th>
-                <th>Time out</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody id="tbody"></tbody>
-          </table>
+    <div class="app-wrap">
+      <header class="app-topbar no-print">
+        <div>
+          <h1 class="app-topbar-title">Visitor Log Database</h1>
+          <p class="app-topbar-subtitle help" style="margin: 4px 0 0">
+            Live record of gate entries, photos, CNIC, company and check-in/out status.
+          </p>
         </div>
-      </section>
-    </main>
+        <div class="app-topbar-meta">
+          <span class="pill"><span aria-hidden="true">●</span> Local system</span>
+          <span class="pill-muted">MySQL / API</span>
+          <span class="pill-muted" id="topbarClock">—</span>
+        </div>
+      </header>
+
+      <main class="app-main">
+        <section class="card">
+          <h2>Search &amp; filter</h2>
+          <div class="grid cols-2 filter-grid">
+            <div>
+              <label for="fDate">Date (time in / created)</label>
+              <input id="fDate" type="date" />
+            </div>
+            <div>
+              <label for="fCnic">CNIC (partial or full)</label>
+              <input id="fCnic" type="text" placeholder="12345 or 12345-1234567-1" />
+            </div>
+            <div>
+              <label for="fName">Visitor name</label>
+              <input id="fName" type="text" />
+            </div>
+            <div>
+              <label for="fCompany">Company</label>
+              <input id="fCompany" type="text" />
+            </div>
+            <div>
+              <label for="fStatus">Status</label>
+              <select id="fStatus">
+                <option value="">All</option>
+                <option value="in">Checked In</option>
+                <option value="out">Checked Out</option>
+              </select>
+            </div>
+          </div>
+          <div class="row filter-actions">
+            <button class="btn btn-primary" type="button" id="searchBtn">Search</button>
+            <button class="btn btn-outline" type="button" id="clearBtn">Reset</button>
+          </div>
+        </section>
+
+        <section class="card table-card visitor-log-card">
+          <h2>Visitor log</h2>
+          <div id="msg" style="padding: 0 18px"></div>
+          <div class="table-scroll">
+            <table class="data visitor-log-table" id="tbl">
+              <thead>
+                <tr>
+                  <th>Date/Time</th>
+                  <th>Name</th>
+                  <th>CNIC</th>
+                  <th>Company</th>
+                  <th>Photo ID</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="tbody"></tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="visitorDetailDialog" class="visitor-detail-dialog no-print" aria-labelledby="visitorDetailTitle">
+      <div class="visitor-detail-inner">
+        <h2 id="visitorDetailTitle">Visitor details</h2>
+        <button type="button" class="btn btn-sm btn-outline visitor-detail-close" id="visitorDetailClose" aria-label="Close">
+          Close
+        </button>
+        <div id="visitorDetailBody" class="visitor-detail-body"></div>
+      </div>
+    </dialog>
+
     <script type="module" src="/assets/js/visitors.js"></script>
   </body>
 </html>

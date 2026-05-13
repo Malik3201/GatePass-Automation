@@ -104,7 +104,7 @@ The **New visitor** page (`visitor-entry.html`) includes an optional **Auto Capt
 
 **Important:** Auto mode depends on **camera quality, lighting, fixed visitor position, and LAN speed**. For real deployments prefer a **fixed standing mark**, **CNIC tray or holder**, **even lighting**, **no glare**, and **stable IP cameras**. **Manual capture, upload, OCR, and save** remain available if CDN libraries fail to load or detection is unreliable.
 
-**Settings keys** (also in `database/schema.sql` defaults): `VISITOR_CAMERA_STREAM_URL`, `VISITOR_CAMERA_SNAPSHOT_URL`, `CNIC_CAMERA_STREAM_URL`, `CNIC_CAMERA_SNAPSHOT_URL`, `AUTO_CAPTURE_ENABLED`, `AUTO_FACE_COUNTDOWN_SECONDS`, `AUTO_CNIC_COUNTDOWN_SECONDS`. Empty visitor/CNIC URLs fall back to legacy `CAMERA_STREAM_URL` / `CAMERA_SNAPSHOT_URL`.
+**Settings keys** (also in `database/schema.sql` defaults): `VISITOR_CAMERA_STREAM_URL`, `VISITOR_CAMERA_SNAPSHOT_URL`, `CNIC_CAMERA_STREAM_URL`, `CNIC_CAMERA_SNAPSHOT_URL`, `AUTO_CAPTURE_ENABLED`, `AUTO_MODE_ALWAYS_ON`, `AUTO_FACE_COUNTDOWN_SECONDS`, `AUTO_CNIC_COUNTDOWN_SECONDS`, `OCR_FAST_MODE`, `OCR_SECOND_PASS_ENABLED`. Empty visitor/CNIC URLs fall back to legacy `CAMERA_STREAM_URL` / `CAMERA_SNAPSHOT_URL`.
 
 If you already created the database from an older schema, add missing keys manually, for example:
 
@@ -114,9 +114,12 @@ INSERT IGNORE INTO settings (setting_key, setting_value) VALUES
   ('VISITOR_CAMERA_SNAPSHOT_URL', ''),
   ('CNIC_CAMERA_STREAM_URL', ''),
   ('CNIC_CAMERA_SNAPSHOT_URL', ''),
-  ('AUTO_CAPTURE_ENABLED', 'false'),
-  ('AUTO_FACE_COUNTDOWN_SECONDS', '3'),
-  ('AUTO_CNIC_COUNTDOWN_SECONDS', '3');
+  ('AUTO_CAPTURE_ENABLED', 'true'),
+  ('AUTO_MODE_ALWAYS_ON', 'true'),
+  ('AUTO_FACE_COUNTDOWN_SECONDS', '2'),
+  ('AUTO_CNIC_COUNTDOWN_SECONDS', '2'),
+  ('OCR_FAST_MODE', 'true'),
+  ('OCR_SECOND_PASS_ENABLED', 'false');
 ```
 
 ## Static files & folders
@@ -246,15 +249,17 @@ Many phone apps expose something like: `http://192.168.1.25:8080/shot.jpg` (IP a
 ### OCR limitations
 
 - OCR mistakes are common on glare, blur, or low light.
-- The **New visitor** page always shows **raw OCR text** for debugging.
+- The **New visitor** page can show **raw OCR text** for debugging (collapsed under “OCR debug”) but normal operators mainly work with the main Name / CNIC fields.
 - The operator **must** verify CNIC and name before saving.
 
 ### Production notes
 
 - Prefer a **fixed IP camera** with stable power and network.
 - Use **good, even lighting** at the desk/gate.
-- Ask the visitor to stand in a **marked position** for the face photo.
+- Ask the visitor to stand in a **marked position** for the face photo and keep a **CNIC tray/holder** in a fixed position.
 - Keep the **CNIC scan area** flat; avoid **glare** from overhead lights.
+- Turn on `AUTO_CAPTURE_ENABLED=true` and `AUTO_MODE_ALWAYS_ON=true` so the kiosk waits for the next visitor automatically when `visitor-entry.html` is open.
+- For OCR speed keep `OCR_FAST_MODE=true` and `OCR_SECOND_PASS_ENABLED=false` so each CNIC runs through a single fast pipeline, with an optional second pass only when explicitly enabled.
 - **Always verify** OCR fields against the physical CNIC.
 
 ## Project layout (backend)
@@ -273,4 +278,9 @@ Many phone apps expose something like: `http://192.168.1.25:8080/shot.jpg` (IP a
 
 - **Cannot connect to MySQL:** check `DB_HOST`, `DB_USER`, `DB_PASSWORD`, and that the database `gatepass_automation` exists.
 - **Camera capture fails:** confirm the snapshot URL works in a browser on the laptop; some apps need HTTPS off or a specific path; axios timeout is 10 seconds.
-- **OCR slow / high CPU:** first run may download Tesseract language data; later runs are faster on the same machine.
+- **OCR slow / high CPU:** first run may download Tesseract language data; later runs are faster on the same machine. For best kiosk performance use a wired LAN if possible, stable IP cameras, SSD storage, and keep auto mode + fast OCR enabled.
+- **Optional Python OCR:** you can offload OCR+image preprocessing to `python-ocr/` by setting:
+  - `OCR_PYTHON_ENABLED=true`
+  - `OCR_PYTHON_BASE_URL=http://localhost:8001` (default)
+  - `OCR_PYTHON_TIMEOUT_MS=10000` (default)
+  If Python OCR is disabled or fails, the system automatically falls back to the existing Tesseract.js path so production doesn’t break.

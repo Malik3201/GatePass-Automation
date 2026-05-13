@@ -1,0 +1,12 @@
+fastapi==0.115.5
+pydantic==2.9.2
+uvicorn==0.32.1
+opencv-python-headless==4.10.0.84
+numpy<2.0
+pytesseract==0.3.13
+Pillow==10.4.0
+python-multipart
+# Note:
+# - pytesseract requires the system Tesseract binary installed.
+# - This microservice is optional; Node falls back to Tesseract.js if Python OCR is disabled or fails.
+

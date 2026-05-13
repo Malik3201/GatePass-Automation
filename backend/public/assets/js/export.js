@@ -1,5 +1,21 @@
 import { apiGet } from './api.js';
 
+function tickClock() {
+  const el = document.getElementById('topbarClock');
+  if (!el) return;
+  const d = new Date();
+  el.textContent = d.toLocaleString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+tickClock();
+setInterval(tickClock, 30000);
+
 function showMsg(text, kind) {
   const el = document.getElementById('msg');
   el.className = `msg ${kind || ''}`.trim();
@@ -19,16 +35,23 @@ function setLinks(result) {
   const csv = document.getElementById('csvLink');
   const xlsx = document.getElementById('xlsxLink');
   const backup = document.getElementById('backupLink');
+  const countEl = document.getElementById('exportCount');
 
   csv.href = result.csvPath;
-  csv.textContent = result.csvPath;
+  csv.textContent = 'Download CSV';
+  csv.title = result.csvPath || '';
   xlsx.href = result.xlsxPath;
-  xlsx.textContent = result.xlsxPath;
+  xlsx.textContent = 'Download Excel';
+  xlsx.title = result.xlsxPath || '';
+
+  if (countEl) {
+    countEl.textContent = result.count != null ? String(result.count) : '—';
+  }
 
   const bf = result.backupFolder || '';
   if (bf) {
     backup.href = `${bf}/images/visitors/`;
-    backup.textContent = `${bf} (try visitors subfolder)`;
+    backup.textContent = bf;
   } else {
     backup.href = '#';
     backup.textContent = '(none)';
@@ -51,6 +74,8 @@ async function runExport() {
   } catch (e) {
     showMsg(e.message || 'Export failed', 'error');
     document.getElementById('links').style.display = 'none';
+    const countEl = document.getElementById('exportCount');
+    if (countEl) countEl.textContent = '—';
   }
 }
 

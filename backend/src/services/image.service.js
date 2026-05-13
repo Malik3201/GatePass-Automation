@@ -5,6 +5,7 @@ const os = require('os');
 
 /** Target width for CNIC OCR — larger than before for small text. */
 const OCR_WIDTH = 2000;
+const FAST_OCR_WIDTH = 1350;
 
 function safeUnlink(filePath) {
   try {
@@ -22,12 +23,12 @@ function tmpPngPath(label) {
  * Common pipeline: EXIF rotate, scale to ~2000px wide (or height), grayscale.
  * Pakistani CNIC front is portrait; fit inside keeps aspect ratio.
  */
-function basePipeline(inputPath) {
+function basePipeline(inputPath, targetWidth = OCR_WIDTH) {
   return sharp(inputPath)
     .rotate()
     .resize({
-      width: OCR_WIDTH,
-      height: OCR_WIDTH,
+      width: targetWidth,
+      height: targetWidth,
       fit: 'inside',
       withoutEnlargement: false,
     })
@@ -94,9 +95,21 @@ async function preprocessForOcr(inputPath) {
   return variantNormal(inputPath);
 }
 
+async function preprocessForOcrFast(inputPath) {
+  const outPath = tmpPngPath('fast');
+  await basePipeline(inputPath, FAST_OCR_WIDTH)
+    .normalize({ lower: 2, upper: 98 })
+    .sharpen({ sigma: 0.8, m1: 0.4, m2: 0.4, x1: 2, y2: 8, y3: 16 })
+    .png()
+    .toFile(outPath);
+  return outPath;
+}
+
 module.exports = {
   preprocessForOcr,
+  preprocessForOcrFast,
   createOcrVariantPaths,
   safeUnlink,
   OCR_WIDTH,
+  FAST_OCR_WIDTH,
 };
